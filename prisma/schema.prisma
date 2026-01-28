@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Project {
+  id           Int           @id @default(autoincrement())
+  name         String
+  slug         String        @unique
+  createdAt    DateTime      @default(now())
+  environments Environment[]
+}
+
+model Environment {
+  id        Int       @id @default(autoincrement())
+  name      String
+  slug      String
+  projectId Int
+  createdAt DateTime  @default(now())
+  project   Project   @relation(fields: [projectId], references: [id])
+  versions  Version[]
+
+  @@unique([projectId, slug])
+}
+
+model Version {
+  id            Int         @id @default(autoincrement())
+  name          String
+  environmentId Int
+  s3Path        String
+  isActive      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  environment   Environment @relation(fields: [environmentId], references: [id])
+
+  @@unique([environmentId, name])
+}
