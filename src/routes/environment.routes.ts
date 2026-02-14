@@ -1,9 +1,30 @@
 import { Router } from "express";
-import { createEnvironment, getEnvironments } from "../controllers/environment.controller";
-import verisonRoutes from "./version.routes"
-const router = Router({ mergeParams: true })
+import {
+  createEnvironment,
+  getEnvironments,
+} from "../controllers/environment.controller";
+import verisonRoutes from "./version.routes";
+import { requireAuth, requireRole } from "../middlewares/auth";
+import { Role } from "../generated/prisma/client";
 
-router.get("/",getEnvironments)
-router.post("/",createEnvironment)
-router.use("/:environmentId/versions", verisonRoutes)
-export default router
+const router = Router({ mergeParams: true });
+
+router.get(
+  "/",
+  requireAuth,
+  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  getEnvironments,
+);
+router.post(
+  "/",
+  requireAuth,
+  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  createEnvironment,
+);
+router.use(
+  "/:environmentId/versions",
+  requireAuth,
+  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  verisonRoutes,
+);
+export default router;

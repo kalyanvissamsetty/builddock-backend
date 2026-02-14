@@ -3,7 +3,7 @@ import prisma from "../lib/prisma";
 
 export const redirectToActiveVersion = async (req: Request, res: Response) => {
   const projectSlug = String(req.params.projectSlug);
-    const envSlug = String(req.params.envSlug)
+  const envSlug = String(req.params.envSlug);
   // 1. Find project
   const project = await prisma.project.findUnique({
     where: { slug: projectSlug },
@@ -41,7 +41,17 @@ export const redirectToActiveVersion = async (req: Request, res: Response) => {
   const staticBaseUrl = process.env.STATIC_BASE_URL;
 
   const redirectUrl = `${staticBaseUrl}${activeVersion.s3Path}/index.html`;
-  console.log("redirect - "+ redirectUrl)
+  console.log("redirect - " + redirectUrl);
   // 5. Redirect
   return res.redirect(302, redirectUrl);
 };
+
+export async function openBuild(req: Request, res: Response) {
+  const projectSlug = String(req.params.projectSlug);
+  const envSlug = String(req.params.envSlug);
+  const versionName = String(req.params.versionName);
+
+  const cloudfrontUrl = `${process.env.STATIC_BASE_URL}${projectSlug}/${envSlug}/${versionName}/index.html`;
+
+  return res.redirect(cloudfrontUrl);
+}

@@ -35,6 +35,57 @@ model Version {
   isActive      Boolean     @default(false)
   createdAt     DateTime    @default(now())
   environment   Environment @relation(fields: [environmentId], references: [id])
-
+  viewerAccess ViewerBuildAccess[]
   @@unique([environmentId, name])
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  name            String?
+  email              String              @unique
+  passwordHash       String?
+  role               Role                @default(VIEWER)
+  isEmailVerified    Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  verificationTokens VerificationToken[]
+  viewerBuildAccess ViewerBuildAccess[]
+  otpCode          String?
+  otpExpiresAt     DateTime?
+  otpAttempts      Int      @default(0)
+  otpLockedUntil   DateTime?
+  otpResendAfter   DateTime?
+}
+
+model VerificationToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AllowedEmailDomain {
+  id        Int      @id @default(autoincrement())
+  domain    String   @unique
+  createdAt DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  DEV
+  VIEWER
+  QA
+}
+
+model ViewerBuildAccess {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  versionId Int
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  version   Version  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, versionId])
 }
