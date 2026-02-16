@@ -35,10 +35,11 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "lax",
-      secure: false,
+      sameSite: "none",
+      secure: true,                // MUST be true in production (HTTPS)
+      domain: ".timsstudio.tech",  // share across subdomains
     },
-  }),
+  })
 );
 
 
