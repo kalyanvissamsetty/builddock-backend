@@ -53,7 +53,7 @@ app.use("/api/admin/users", adminUsersRoutes);
 app.get("/health", (req, res)=>{
   return res.status(200).json({"message": "Health check"})
 })
-const PORT = process.env.PORT || 4000
+const PORT = 4000
 
 app.listen(PORT, () => {
   logger.info(`Backend running on http://localhost:${PORT}`)
