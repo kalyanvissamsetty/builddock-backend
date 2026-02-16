@@ -3,7 +3,7 @@ import {
   redirectToActiveVersion,
   openBuild,
 } from "../controllers/public.controller";
-import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/authJwt";
 import { requireBuildAccess } from "../middlewares/requireBuildAccess";
 
 requireBuildAccess;

@@ -1,7 +1,7 @@
 import { Router } from "express"
 import { uploadBuild } from "../controllers/build.controller"
 import { upload } from "../middlewares/upload.middleware"
-import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/authJwt";
 import { Role } from "../generated/prisma/client"
 
 const router = Router()

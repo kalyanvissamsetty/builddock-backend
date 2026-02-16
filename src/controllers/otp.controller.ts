@@ -1,7 +1,12 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
 import { generateAndSendOtp } from "../services/otp.service";
-
+import { setAuthCookies } from "../utils/cookies";
+import { signAccessToken, signRefreshToken } from "../utils/jwt";
+import crypto from "crypto";
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 export async function verifyOtp(req: Request, res: Response) {
   const { email, otp } = req.body;
 
@@ -69,8 +74,19 @@ export async function verifyOtp(req: Request, res: Response) {
       otpResendAfter: null,
     },
   });
-  req.session.userId = user.id;
-  return res.json({ message: "Email verified successfully" });
+  const accessToken = signAccessToken(user.id, user.role);
+  const refreshToken = signRefreshToken(user.id, user.role);
+
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  setAuthCookies(res, accessToken, refreshToken);
+  return res.json({ message: "Verified and logged in" });
 }
 
 export async function resendOtp(req: Request, res: Response) {

@@ -4,7 +4,7 @@ import {
   getEnvironments,
 } from "../controllers/environment.controller";
 import verisonRoutes from "./version.routes";
-import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/authJwt";
 import { Role } from "../generated/prisma/client";
 
 const router = Router({ mergeParams: true });

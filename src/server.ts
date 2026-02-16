@@ -7,12 +7,12 @@ import projectRoutes from "./routes/project.routes"
 import versionRoutes from "./routes/version.routes";
 import publicRoutes from "./routes/public.routes";
 import authRoutes from "./routes/auth.routes";
-import session from "express-session";
 import adminViewerAccessRoutes from "./routes/admin.viewerAccess.routes";
 import viewerRoutes from "./routes/viewer.routes";
 import adminUsersRoutes from "./routes/admin.users.routes";
 import { logger } from "./utils/logger";
 import { requestLogger } from "./middlewares/requestLogger";
+import cookieParser from "cookie-parser";
 
 const app = express()
 
@@ -31,27 +31,20 @@ app.use(
     credentials: true, // required for cookies to be sent and stored cross-origin
   }),
 );
-
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
-
-app.use(
-  session({
-    name: "builddock.sid",
-    secret: process.env.SESSION_SECRET as string,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      ...(process.env.NODE_ENV === "production" && { domain: ".timsstudio.tech" }),
-    },
-  })
-);
-
-
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: number;
+        role: string;
+      };
+    }
+  }
+}
 app.use("/api/builds", buildRoutes)
 app.use("/projects", projectRoutes)
 app.use("/versions", versionRoutes);

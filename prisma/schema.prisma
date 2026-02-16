@@ -54,6 +54,8 @@ model User {
   otpAttempts      Int      @default(0)
   otpLockedUntil   DateTime?
   otpResendAfter   DateTime?
+  refreshTokens RefreshToken[]
+
 }
 
 model VerificationToken {
@@ -88,4 +90,17 @@ model ViewerBuildAccess {
   version   Version  @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, versionId])
+}
+
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
