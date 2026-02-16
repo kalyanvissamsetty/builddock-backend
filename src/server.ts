@@ -16,6 +16,9 @@ import { requestLogger } from "./middlewares/requestLogger";
 
 const app = express()
 
+// Required behind ALB/HTTPS: so req.secure and cookie Secure flag are correct
+app.set("trust proxy", 1)
+
 app.use(
   cors({
     origin: [
