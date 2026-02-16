@@ -1,12 +1,9 @@
 import prisma from "../lib/prisma";
 import { sendOtpEmail } from "./email.service";
-
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+import { generateOTP } from "../utils/otp";
 
 export async function generateAndSendOtp(userId: number, email: string) {
-  const otp = generateOtp();
+  const otp = generateOTP();
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 

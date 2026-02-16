@@ -115,9 +115,6 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function me(req: Request, res: Response) {
-  // console.log("me function")
-  // console.log("Session:", req.session);
-  // console.log("UserId:", req.session.userId);
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }

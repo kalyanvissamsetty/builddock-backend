@@ -9,9 +9,6 @@ export async function requireAuth(
   res: Response,
   next: NextFunction,
 ) {
-  console.log("requireAuth function");
-  console.log("Session:", req.session);
-  console.log("UserId:", req.session.userId);
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
