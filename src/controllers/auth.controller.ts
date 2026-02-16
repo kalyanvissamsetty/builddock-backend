@@ -5,7 +5,6 @@ import { hashPassword } from "../utils/password";
 import { isEmailDomainAllowed } from "../utils/emailDomain";
 import { validatePassword } from "../utils/passwordRules";
 import { verifyPassword } from "../utils/password";
-import { generateOTP } from "../utils/otp";
 import { generateAndSendOtp } from "../services/otp.service";
 export async function signup(req: Request, res: Response) {
   logger.info(`Signup attempt for email: ${req.body.email}`);

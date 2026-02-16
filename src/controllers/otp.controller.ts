@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { generateOTP } from "../utils/otp";
 import { generateAndSendOtp } from "../services/otp.service";
 
 export async function verifyOtp(req: Request, res: Response) {
