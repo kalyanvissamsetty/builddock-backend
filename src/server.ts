@@ -18,7 +18,14 @@ const app = express()
 
 app.use(
   cors({
-    origin: "*"
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://timsstudio.tech",
+      "https://www.timsstudio.tech",
+      "https://api.timsstudio.tech",
+    ],
+    credentials: true, // required for cookies to be sent and stored cross-origin
   }),
 );
 
@@ -34,9 +41,9 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "none",
-      secure: true,                // MUST be true in production (HTTPS)
-      domain: ".timsstudio.tech",  // share across subdomains
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      ...(process.env.NODE_ENV === "production" && { domain: ".timsstudio.tech" }),
     },
   })
 );
