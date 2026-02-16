@@ -1,4 +1,5 @@
 import { error } from "node:console"
+import { logger } from "../utils/logger";
 import prisma from "../lib/prisma"
 import { Request,Response } from "express"
 
@@ -18,6 +19,8 @@ export const createProject = async(req:Request, res:Response)=>{
     const project = await prisma.project.create({
         data:{name,slug}
     })
+    
+    logger.info(`Project created: ${project.name} (${project.slug})`);
 
     res.status(201).json(project)
 }

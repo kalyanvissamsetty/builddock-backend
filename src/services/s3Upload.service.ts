@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../utils/logger";
 import fs from "fs";
 import path from "path";
 
@@ -12,31 +13,49 @@ console.log("Using Bucket:", process.env.AWS_S3_BUCKET);
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET!;
 
-export async function uploadFolderToS3(
-  localFolderPath: string,
-  s3BaseKey: string,
-) {
-  const files = fs.readdirSync(localFolderPath);
+// Helper function to get all files recursively
+function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
+  const files = fs.readdirSync(dirPath);
 
-  for (const file of files) {
-    const fullPath = path.join(localFolderPath, file);
-    const s3Key = `${s3BaseKey}/${file}`;
-
-    if (fs.lstatSync(fullPath).isDirectory()) {
-      //  Recurse into subfolder
-      await uploadFolderToS3(fullPath, s3Key);
+  files.forEach(function (file) {
+    if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+      arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
     } else {
+      arrayOfFiles.push(path.join(dirPath, "/", file));
+    }
+  });
+
+  return arrayOfFiles;
+}
+
+export async function uploadFolderToS3(folderPath: string, s3KeyBase: string) {
+  logger.info(`Starting S3 upload from ${folderPath} to s3://${BUCKET_NAME}/${s3KeyBase}`);
+  const allLocalFiles = getAllFiles(folderPath);
+
+  for (const fullPath of allLocalFiles) {
+    // Calculate the relative path from the base folderPath
+    const relativePath = path.relative(folderPath, fullPath);
+    const s3Key = path.join(s3KeyBase, relativePath).replace(/\\/g, '/'); // Ensure S3 key uses forward slashes
+
+    try {
       // Upload file
       const fileStream = fs.createReadStream(fullPath);
-      const metadata = getS3Metadata(file);
+      const metadata = getS3Metadata(relativePath);
+
+      logger.debug(`Uploading file: ${s3Key}`);
+
       await s3.send(
         new PutObjectCommand({
           Bucket: BUCKET_NAME,
           Key: s3Key,
           Body: fileStream,
-          ...metadata,
+          ContentType: metadata.ContentType,
+          ContentEncoding: metadata.ContentEncoding,
         }),
       );
+    } catch (e) {
+      logger.error(`Failed to upload ${s3Key}:`, e);
+      throw e;
     }
   }
 }

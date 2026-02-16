@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express"
+import { logger } from "../utils/logger";
 import fs from "fs"
 import path from "path"
 import unzipper from "unzipper"
@@ -9,6 +10,8 @@ import { invalidateCloudFront } from "../services/cloudfront.service";
 export async function uploadBuild(req: Request, res: Response, next: NextFunction) {
   try {
     const { projectId, environmentId, versionId } = req.body;
+    
+    logger.info(`Upload build request: Project=${projectId}, Env=${environmentId}, Version=${versionId}`);
 
     const projectIdNum = Number(projectId);
     const environmentIdNum = Number(environmentId);
@@ -54,8 +57,12 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
         .pipe(unzipper.Extract({path: extractDir}))
         .promise()
     validateUnityWebglBuild(extractDir)
+    logger.info(`Build extracted to ${extractDir}`);
+
     const s3KeyBase = `${project.slug}/${environment.slug}/${version.name}`;
+    logger.info(`Uploading to S3: ${s3KeyBase}`);
     await uploadFolderToS3(extractDir, s3KeyBase)
+    logger.info(`Upload to S3 completed: ${s3KeyBase}`);
     cleanUpTempFiles(zipPath, extractDir);
     const versions = await prisma.version.findMany({
       where: { environmentId: environmentIdNum },
@@ -79,6 +86,7 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       await invalidateCloudFront([
         `/${project.slug}/${environment.slug}/${version.name}/*`,
       ]);
+      logger.info(`CloudFront invalidated for ${s3KeyBase}`);
   }
 
 
@@ -91,7 +99,7 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       isThisVersionDefault: isFirstVersion || versionBeingUploaded?.isActive,
     });
   } catch (error) {
-    console.error(error)
+    logger.error("Error uploading build", error);
     next(error)
   }
 }

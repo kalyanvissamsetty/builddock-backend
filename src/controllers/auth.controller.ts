@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { logger } from "../utils/logger";
 import prisma from "../lib/prisma";
 import { hashPassword } from "../utils/password";
 import { isEmailDomainAllowed } from "../utils/emailDomain";
@@ -7,7 +8,7 @@ import { verifyPassword } from "../utils/password";
 import { generateOTP } from "../utils/otp";
 import { generateAndSendOtp } from "../services/otp.service";
 export async function signup(req: Request, res: Response) {
-  console.log(req)
+  logger.info(`Signup attempt for email: ${req.body.email}`);
   const { email, password, name } = req.body;
   // Basic validation
   if (!email || !password || !name) {
@@ -56,6 +57,8 @@ export async function signup(req: Request, res: Response) {
     },
   });
 
+  logger.info(`User created: ${user.id}`);
+
   await generateAndSendOtp(user.id, user.email);
 
 
@@ -67,7 +70,7 @@ export async function signup(req: Request, res: Response) {
 
 
 export async function login(req: Request, res: Response) {
-    console.log(req.body);
+    logger.info(`Login attempt for email: ${req.body.email}`);
 
   const { email, password } = req.body;
 
@@ -89,6 +92,7 @@ export async function login(req: Request, res: Response) {
   }
 
   if (!user.isEmailVerified) {
+    logger.warn(`Login failed: Email not verified for ${email}`);
     return res
       .status(403)
       .json({ code: "EMAIL_NOT_VERIFIED", message: "Email not verified" });
@@ -111,9 +115,9 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function me(req: Request, res: Response) {
-  console.log("me function")
-  console.log("Session:", req.session);
-  console.log("UserId:", req.session.userId);
+  // console.log("me function")
+  // console.log("Session:", req.session);
+  // console.log("UserId:", req.session.userId);
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }

@@ -11,6 +11,9 @@ import session from "express-session";
 import adminViewerAccessRoutes from "./routes/admin.viewerAccess.routes";
 import viewerRoutes from "./routes/viewer.routes";
 import adminUsersRoutes from "./routes/admin.users.routes";
+import { logger } from "./utils/logger";
+import { requestLogger } from "./middlewares/requestLogger";
+
 const app = express()
 
 app.use(
@@ -22,6 +25,7 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(requestLogger);
 
 app.use(
   session({
@@ -52,5 +56,5 @@ app.get("/health", (req, res)=>{
 const PORT = process.env.PORT || 4000
 
 app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`)
+  logger.info(`Backend running on http://localhost:${PORT}`)
 })
