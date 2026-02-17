@@ -36,11 +36,11 @@ export const getVersions = async (req:Request, res:Response)=>{
 export const activateVersion = async (req: Request, res: Response) => {
   const versionId = Number(req.params.versionId);
 
-  if (isNaN(versionId)) {
+  if (Number.isNaN(versionId)) {
     return res.status(400).json({ message: "Invalid versionId" });
   }
 
-  // 1. Get the version (to know environmentId)
+  //  Fetch version
   const version = await prisma.version.findUnique({
     where: { id: versionId },
   });
@@ -49,7 +49,14 @@ export const activateVersion = async (req: Request, res: Response) => {
     return res.status(404).json({ message: "Version not found" });
   }
 
-  // 2. Transaction: deactivate others, activate this one
+  // Already active → early return (IMPORTANT)
+  if (version.isActive) {
+    return res.status(200).json({
+      message: "Version is already active",
+    });
+  }
+
+  //  Activate inside transaction
   await prisma.$transaction([
     prisma.version.updateMany({
       where: {
@@ -58,20 +65,44 @@ export const activateVersion = async (req: Request, res: Response) => {
       },
       data: { isActive: false },
     }),
-
     prisma.version.update({
       where: { id: versionId },
       data: { isActive: true },
     }),
   ]);
 
-  const env = await prisma.environment.findFirst({
+  // Fetch env & project (needed for invalidation)
+  const env = await prisma.environment.findUnique({
     where: { id: version.environmentId },
   });
 
-  const project = await prisma.project.findFirst({
-    where: { id: env?.projectId },
+  if (!env) {
+    // Extremely rare, but safe guard
+    return res.status(500).json({ message: "Environment not found" });
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: env.projectId },
   });
-  await invalidateCloudFront([`/${project?.slug}/${env?.slug}/*`]); 
-  res.status(204).json({ message: "Version activated successfully" });
+
+  if (!project) {
+    return res.status(500).json({ message: "Project not found" });
+  }
+  if (!project?.slug || !env?.slug) {
+    console.error("Invalid CloudFront invalidation path", {
+      projectSlug: project?.slug,
+      envSlug: env?.slug,
+    });
+
+    return res.status(200).json({
+      message: "Version activated successfully (cache invalidation skipped)",
+    });
+  }
+  console.log(`/${project.slug}/${env.slug}/*`)
+  //  Invalidate CloudFront only when change happened
+  await invalidateCloudFront([`/${project.slug}/${env.slug}/*`]);
+
+  return res.status(200).json({
+    message: "Version activated successfully",
+  });
 };

@@ -2,13 +2,13 @@ import type { Response } from "express";
 
 function cookieOptions() {
     const isProd = process.env.NODE_ENV === "production";
-
-    const sameSite = (process.env.COOKIE_SAMESITE ?? "lax") as "lax" | "strict" | "none";
-    const domain = process.env.COOKIE_DOMAIN || undefined;
+    console.log("Production - "+isProd);
+    const sameSite = isProd ? "lax" : "lax";
+    const domain = isProd ? process.env.COOKIE_DOMAIN : "localhost";
 
     return {
         httpOnly: true,
-        secure : isProd,
+        secure: isProd,
         sameSite,
         domain,
         path: "/",
