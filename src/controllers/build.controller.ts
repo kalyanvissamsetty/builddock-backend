@@ -11,7 +11,7 @@ import { getBaseCDNURL } from "../utils/conditionalRules";
 export async function uploadBuild(req: Request, res: Response, next: NextFunction) {
   try {
     const { projectId, environmentId, versionId } = req.body;
-    
+
     logger.info(`Upload build request: Project=${projectId}, Env=${environmentId}, Version=${versionId}`);
 
     const projectIdNum = Number(projectId);
@@ -39,24 +39,24 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
     }
 
     if (!file) {
-        return next(new Error("ZIP file is required"));
+      return next(new Error("ZIP file is required"));
     }
 
     const zipPath = file.path;
-    const zipBaseName = path.basename(zipPath,".zip");
+    const zipBaseName = path.basename(zipPath, ".zip");
 
     const extractDir = path.join(
-        "tmp",
-        "extracted",
-        zipBaseName
+      "tmp",
+      "extracted",
+      zipBaseName
     )
 
-    fs.mkdirSync(extractDir, {recursive: true});
+    fs.mkdirSync(extractDir, { recursive: true });
 
     await fs.
-        createReadStream(zipPath)
-        .pipe(unzipper.Extract({path: extractDir}))
-        .promise()
+      createReadStream(zipPath)
+      .pipe(unzipper.Extract({ path: extractDir }))
+      .promise()
     validateUnityWebglBuild(extractDir)
     logger.info(`Build extracted to ${extractDir}`);
 
@@ -78,23 +78,23 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       });
     }
 
-  const versionBeingUploaded = await prisma.version.update({
-    where: { id: versionIdNum },
-    data: { s3Path: s3KeyBase },
-  });
+    const versionBeingUploaded = await prisma.version.update({
+      where: { id: versionIdNum },
+      data: { s3Path: s3KeyBase },
+    });
 
-  if(version.s3Path != "" && version.s3Path != null ){
+    if (version.s3Path != "" && version.s3Path != null) {
       await invalidateCloudFront([
         `/${project.slug}/${environment.slug}/${version.name}/*`,
       ]);
       logger.info(`CloudFront invalidated for ${s3KeyBase}`);
-  }
+    }
 
 
 
     return res.status(200).json({
       success: true,
-      publicUrl: getBaseCDNURL(req.headers.origin) +s3KeyBase+"/index.html",
+      publicUrl: getBaseCDNURL(req.headers.origin || req.headers.host) + s3KeyBase + "/index.html",
       message: "ZIP extracted successfully",
       extractedPath: extractDir,
       isThisVersionDefault: isFirstVersion || versionBeingUploaded?.isActive,
@@ -106,31 +106,31 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
 }
 
 
-function validateUnityWebglBuild(extractDir: string){
-    const idxHTMLPath = path.join(extractDir,'index.html')
-    const buildFolderPath = path.join(extractDir,"Build")
+function validateUnityWebglBuild(extractDir: string) {
+  const idxHTMLPath = path.join(extractDir, 'index.html')
+  const buildFolderPath = path.join(extractDir, "Build")
 
-    const hadHTML = fs.existsSync(idxHTMLPath);
+  const hadHTML = fs.existsSync(idxHTMLPath);
 
-    const hadBuild = fs.existsSync(buildFolderPath) && fs.lstatSync(buildFolderPath).isDirectory();
+  const hadBuild = fs.existsSync(buildFolderPath) && fs.lstatSync(buildFolderPath).isDirectory();
 
-    if(!hadBuild || !hadHTML){
-        throw new Error("index.html or Build/ folder is missing")
-    }
+  if (!hadBuild || !hadHTML) {
+    throw new Error("index.html or Build/ folder is missing")
+  }
 }
 
-function cleanUpTempFiles(zipPath: string, extractDir: string){
-    if(fs.existsSync(zipPath))
-        fs.unlinkSync(zipPath)
+function cleanUpTempFiles(zipPath: string, extractDir: string) {
+  if (fs.existsSync(zipPath))
+    fs.unlinkSync(zipPath)
 
-    if(fs.existsSync(extractDir))
-        fs.rmSync(extractDir,{recursive:true})
+  if (fs.existsSync(extractDir))
+    fs.rmSync(extractDir, { recursive: true })
 }
 
-export async function deleteBuild(req: Request, res: Response, next: NextFunction){
+export async function deleteBuild(req: Request, res: Response, next: NextFunction) {
   try {
     const { projectId, environmentId, versionId } = req.body;
-    
+
     logger.info(`Delete build request: Project=${projectId}, Env=${environmentId}, Version=${versionId}`);
 
     const projectIdNum = Number(projectId);
@@ -159,9 +159,9 @@ export async function deleteBuild(req: Request, res: Response, next: NextFunctio
     const s3KeyBase = `${project.slug}/${environment.slug}/${version.name}`;
     logger.info(`Deleting from S3: ${s3KeyBase}`);
     const itemsDeleted = await deleteS3Prefix(s3KeyBase)
-    if(itemsDeleted == 0){
+    if (itemsDeleted == 0) {
       logger.warn(`No items found in S3 for ${s3KeyBase}`);
-      return res.status(400).json({message:"Can't delete Build as no objects found"})
+      return res.status(400).json({ message: "Can't delete Build as no objects found" })
     }
     logger.info(`Delete from S3 completed: ${s3KeyBase}`);
     await prisma.version.delete({

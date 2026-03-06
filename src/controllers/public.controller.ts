@@ -39,7 +39,7 @@ export const redirectToActiveVersion = async (req: Request, res: Response) => {
   }
 
   // 4. Build static URL
-  const staticBaseUrl = getBaseCDNURL(req.headers.origin);
+  const staticBaseUrl = getBaseCDNURL(req.headers.origin || req.headers.host);
 
   const redirectUrl = `${staticBaseUrl}${activeVersion.s3Path}/index.html`;
   console.log("redirect - " + redirectUrl);
@@ -52,7 +52,7 @@ export async function openBuild(req: Request, res: Response) {
   const envSlug = String(req.params.envSlug);
   const versionName = String(req.params.versionName);
 
-  const cloudfrontUrl = `${getBaseCDNURL(req.headers.origin)}${projectSlug}/${envSlug}/${versionName}/index.html`;
+  const cloudfrontUrl = `${getBaseCDNURL(req.headers.origin || req.headers.host)}${projectSlug}/${envSlug}/${versionName}/index.html`;
 
   return res.redirect(cloudfrontUrl);
 }
