@@ -1,24 +1,63 @@
 import { Request,Response } from "express";
 import prisma from "../lib/prisma";
 import { invalidateCloudFront } from "../services/cloudfront.service";
-export const createVersion = async (req:Request, res:Response)=>{
-    const environmentId = Number(req.params.environmentId)
+import { logger } from "../utils/logger";
+import { Prisma } from "../generated/prisma/client";
+export const createVersion = async (req: Request, res: Response) => {
+  try {
+    const environmentId = Number(req.params.environmentId);
 
-    if(isNaN(environmentId)) return res.status(400).json({"message": "Environment ID are Invalid"})
-    
-    const {name} = req.body;
+    if (Number.isNaN(environmentId)) {
+      return res.status(400).json({ message: "Environment ID is invalid" });
+    }
 
-    if(!name) return res.status(400).json({"message":"Version name is required"})
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ message: "Version name is required" });
+    }
+
+    // Check if version name already exists in this environment
+    const existing = await prisma.version.findFirst({
+      where: {
+        environmentId,
+        name,
+      },
+      select: { id: true, name: true, environmentId: true },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        message: "Version name already exists in this environment",
+        conflicts: ["name"],
+      });
+    }
 
     const version = await prisma.version.create({
-        data:{
-            name,
-            environmentId,
-            s3Path:"",
-        }
-    })
-    return res.status(201).json(version)
-}
+      data: {
+        name,
+        environmentId,
+        s3Path: "",
+      },
+    });
+
+    return res.status(201).json(version);
+  } catch (err) {
+    // If you have a unique constraint like @@unique([environmentId, name])
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return res.status(409).json({
+        message: "Version name already exists in this environment",
+        meta: err.meta,
+      });
+    }
+
+    logger.error("Failed to create version");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 export const getVersions = async (req:Request, res:Response)=>{
     const environmentId = Number(req.params.environmentId)

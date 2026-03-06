@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   createEnvironment,
+  deleteEnvironment,
+  environmentDeleteSummary,
   getEnvironments,
 } from "../controllers/environment.controller";
 import verisonRoutes from "./version.routes";
@@ -26,5 +28,21 @@ router.use(
   requireAuth,
   requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
   verisonRoutes,
+);
+
+// delete summary for dialog
+router.get(
+  "/:envId/summary",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  environmentDeleteSummary,
+);
+
+// cascade delete env, versions
+router.delete(
+  "/environments/:envId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  deleteEnvironment,
 );
 export default router;

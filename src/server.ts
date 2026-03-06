@@ -13,6 +13,7 @@ import adminUsersRoutes from "./routes/admin.users.routes";
 import { logger } from "./utils/logger";
 import { requestLogger } from "./middlewares/requestLogger";
 import cookieParser from "cookie-parser";
+import adminRoutes from "./routes/admin.routes"
 
 const app = express()
 
@@ -27,6 +28,12 @@ app.use(
       "https://timsstudio.tech",
       "https://www.timsstudio.tech",
       "https://api.timsstudio.tech",
+      "https://cdn.timsstudio.tech",
+      "https://preview.themosaiccompany.com",
+      "https://www.preview.themosaiccompany.com",
+      "https://preview-cdn.themosaiccompany.com",
+      "https://preview-api.themosaiccompany.com",
+      "https://preview-api.themosaiccompany.com:444",
     ],
     credentials: true, // required for cookies to be sent and stored cross-origin
   }),
@@ -49,12 +56,13 @@ app.use("/api/builds", buildRoutes)
 app.use("/projects", projectRoutes)
 app.use("/versions", versionRoutes);
 app.use("/public", publicRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/viewer-access", adminViewerAccessRoutes);
 app.use("/api/viewer", viewerRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
 app.get("/health", (req, res)=>{
-  return res.status(200).json({"message": "Health check"})
+  return res.status(200).json({"message": "Health check v6 Data - 6th march"})
 })
 const PORT = 4000
 

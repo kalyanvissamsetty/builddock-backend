@@ -55,7 +55,7 @@ model User {
   otpLockedUntil   DateTime?
   otpResendAfter   DateTime?
   refreshTokens RefreshToken[]
-
+invitesCreated  UserInvite[] 
 }
 
 model VerificationToken {
@@ -103,4 +103,27 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model UserInvite {
+  id          Int      @id @default(autoincrement())
+  email       String
+  name        String?
+  domain      String
+  status      InviteStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdById Int
+role        Role         @default(VIEWER)
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  @@index([email])
+  @@index([status])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
 }

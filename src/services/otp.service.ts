@@ -1,11 +1,22 @@
 import prisma from "../lib/prisma";
-import { sendOtpEmail } from "./email.service";
+import {  sendOtpEmail } from "./resend.email.service"
 import { generateOTP } from "../utils/otp";
+type OtpPurpose = "VERIFY_EMAIL" | "LOGIN" | "INVITE";
 
-export async function generateAndSendOtp(userId: number, email: string) {
+type OtpEmailContext = {
+  purpose?: OtpPurpose;
+  appName?: string;
+  loginOtpLink?: string; // used for invite/login convenience
+  roleLabel?: string;    // used for invite
+};
+
+export async function generateAndSendOtp(
+  userId: number,
+  email: string,
+  ctx: OtpEmailContext = {},
+) {
   const otp = generateOTP();
-
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   await prisma.user.update({
     where: { id: userId },
@@ -17,5 +28,10 @@ export async function generateAndSendOtp(userId: number, email: string) {
     },
   });
 
-  //await sendOtpEmail(email, otp);
+  await sendOtpEmail(email, otp, {
+    purpose: ctx.purpose ?? "VERIFY_EMAIL", // default keeps old behavior
+    appName: ctx.appName ?? "Mosaic WebGL Viewer",
+    loginOtpLink: ctx.loginOtpLink,
+    roleLabel: ctx.roleLabel,
+  });
 }
