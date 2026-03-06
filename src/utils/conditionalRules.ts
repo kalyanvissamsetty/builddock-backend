@@ -7,11 +7,11 @@ export function getBaseFrontEndURL(origin?: string){
 }
 
 export function getBaseCDNURL(origin?: string) {
-    if (origin?.includes("themosaiccompany")) return "https://preview-cdn.themosaiccompany.com";
+    if (origin?.includes("themosaiccompany")) return "https://preview-cdn.themosaiccompany.com/";
     if (origin?.includes("timsstudio")) {
-        return "https://cdn.timsstudio.tech"
+        return "https://cdn.timsstudio.tech/"
     }
-    return "https://cdn.timsstudio.tech"
+    return "https://cdn.timsstudio.tech/"
 }
 
 export function getAppName(origin?: string){
