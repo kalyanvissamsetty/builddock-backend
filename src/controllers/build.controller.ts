@@ -3,9 +3,10 @@ import { logger } from "../utils/logger";
 import fs from "fs"
 import path from "path"
 import unzipper from "unzipper"
-import {uploadFolderToS3} from "../services/s3Upload.service"
+import { uploadFolderToS3, deleteS3Prefix } from "../services/s3Upload.service"
 import prisma from "../lib/prisma"
 import { invalidateCloudFront } from "../services/cloudfront.service";
+import { getBaseCDNURL } from "../utils/conditionalRules";
 
 export async function uploadBuild(req: Request, res: Response, next: NextFunction) {
   try {
@@ -93,7 +94,7 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
 
     return res.status(200).json({
       success: true,
-      publicUrl: process.env.STATIC_BASE_URL+s3KeyBase+"/index.html",
+      publicUrl: getBaseCDNURL(req.headers.origin) +s3KeyBase+"/index.html",
       message: "ZIP extracted successfully",
       extractedPath: extractDir,
       isThisVersionDefault: isFirstVersion || versionBeingUploaded?.isActive,
@@ -124,4 +125,55 @@ function cleanUpTempFiles(zipPath: string, extractDir: string){
 
     if(fs.existsSync(extractDir))
         fs.rmSync(extractDir,{recursive:true})
+}
+
+export async function deleteBuild(req: Request, res: Response, next: NextFunction){
+  try {
+    const { projectId, environmentId, versionId } = req.body;
+    
+    logger.info(`Delete build request: Project=${projectId}, Env=${environmentId}, Version=${versionId}`);
+
+    const projectIdNum = Number(projectId);
+    const environmentIdNum = Number(environmentId);
+    const versionIdNum = Number(versionId);
+
+    if (!projectIdNum || !environmentIdNum || !versionIdNum) {
+      return next(new Error("Project or Environment or version is missing"));
+    }
+    const project = await prisma.project.findUnique({
+      where: { id: projectIdNum },
+    });
+
+    const environment = await prisma.environment.findUnique({
+      where: { id: environmentIdNum },
+    });
+
+    const version = await prisma.version.findUnique({
+      where: { id: versionIdNum },
+    });
+
+    if (!project || !environment || !version) {
+      return res.status(400).json({ message: "Invalid project/env/version" });
+    }
+
+    const s3KeyBase = `${project.slug}/${environment.slug}/${version.name}`;
+    logger.info(`Deleting from S3: ${s3KeyBase}`);
+    const itemsDeleted = await deleteS3Prefix(s3KeyBase)
+    if(itemsDeleted == 0){
+      logger.warn(`No items found in S3 for ${s3KeyBase}`);
+      return res.status(400).json({message:"Can't delete Build as no objects found"})
+    }
+    logger.info(`Delete from S3 completed: ${s3KeyBase}`);
+    await prisma.version.delete({
+      where: { id: versionIdNum }
+    });
+    return res.status(200).json({
+      success: true,
+      itemsDeleted,
+      message: "Build deleted successfully",
+    });
+  } catch (error) {
+    logger.error("Error deleting build", error);
+    next(error)
+  }
 }

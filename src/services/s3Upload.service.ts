@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsCommand, DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { logger } from "../utils/logger";
 import fs from "fs";
 import path from "path";
@@ -12,7 +12,16 @@ const s3 = new S3Client({
 console.log("Using Bucket:", process.env.AWS_S3_BUCKET);
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET!;
+export class S3PrefixDeleteError extends Error {
+  prefix: string;
+  details: string;
 
+  constructor(prefix: string, details: string) {
+    super(`Failed to delete S3 prefix "${prefix}": ${details}`);
+    this.prefix = prefix;
+    this.details = details;
+  }
+}
 // Helper function to get all files recursively
 function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
   const files = fs.readdirSync(dirPath);
@@ -101,4 +110,88 @@ function getS3Metadata(fileName: string) {
     ContentType: contentType,
     ContentEncoding: contentEncoding,
   };
+}
+
+export async function deleteS3Prefix(prefixRaw: string): Promise<number> {
+  const bucket = process.env.AWS_S3_BUCKET!;
+  const prefix = prefixRaw.trim().replace(/^\/+/, ""); // remove leading /
+
+  let continuationToken: string | undefined;
+  let totalDeleted = 0;
+
+  logger.info(`Starting deletion for S3 prefix: "${prefix}" in bucket: "${bucket}"`);
+try{
+  while (true) {
+    const listRes = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    const objects = (listRes.Contents || [])
+      .map((o) => o.Key)
+      .filter((k): k is string => Boolean(k));
+
+    logger.info(`Found ${objects.length} objects to delete for prefix: "${prefix}"`);
+
+    if (objects.length === 0) {
+      break;
+    }
+
+    const deleteRes = await s3.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: {
+          Objects: objects.map((Key) => ({ Key })),
+          Quiet: false, // important for debugging
+        },
+      }),
+    );
+
+    if (deleteRes.Errors && deleteRes.Errors.length > 0) {
+      logger.error(
+        `S3 delete had errors for prefix "${prefix}": ${deleteRes.Errors.map(
+          (e) => `${e.Key}:${e.Code}`,
+        ).join(", ")}`,
+      );
+      const msg = deleteRes.Errors.map((e) => `${e.Key}:${e.Code}`).join(", ");
+      throw new S3PrefixDeleteError(prefix, msg);
+    }
+
+    const deletedNow = deleteRes.Deleted?.length ?? 0;
+    totalDeleted += deletedNow;
+
+    logger.info(`Deleted ${deletedNow} objects in this batch for prefix: "${prefix}"`);
+
+    if (!listRes.IsTruncated) {
+      break;
+    }
+
+    continuationToken = listRes.NextContinuationToken;
+  }
+
+  // Verify remaining objects
+  const verifyRes = await s3.send(
+    new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      MaxKeys: 5,
+    }),
+  );
+
+  const remaining = verifyRes.KeyCount ?? 0;
+  logger.info(`Finished deletion for prefix "${prefix}". totalDeleted=${totalDeleted}, remaining=${remaining}`);
+
+  if (remaining > 0) {
+    const sample = (verifyRes.Contents || []).slice(0, 5).map((o) => o.Key).join(", ");
+    logger.warn(`Some objects still remain under prefix "${prefix}". Sample: ${sample}`);
+  }
+
+  return totalDeleted;
+} catch (err: any) {
+  if (err instanceof S3PrefixDeleteError) throw err;
+  throw new S3PrefixDeleteError(prefix, err?.message ?? "Unknown error");
+}
 }

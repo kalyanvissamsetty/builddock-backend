@@ -46,9 +46,44 @@ async function seedEmailDomains() {
 
   console.log("Allowed email domains seeded successfully");
 }
-seedEmailDomains()
-  .catch((e) => {
-    console.error(e);
+export async function seed() {
+  console.log("Running destructive seed for BuildDock");
+
+  // Safety check
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Seed is blocked in production environment");
+  }
+
+  // Delete assignments first to avoid foreign key issues
+  const assignments = await prisma.viewerBuildAccess.deleteMany();
+  console.log("Deleted assignments:", assignments.count);
+
+  // Delete versions
+  const versions = await prisma.version.deleteMany();
+  console.log("Deleted versions:", versions.count);
+
+  // Delete environments
+  const environments = await prisma.environment.deleteMany();
+  console.log("Deleted environments:", environments.count);
+
+  // Delete projects
+  const projects = await prisma.project.deleteMany();
+  console.log("Deleted projects:", projects.count);
+
+  // Delete only viewer users
+  const viewers = await prisma.user.deleteMany({
+    where: {
+      role: "VIEWER"
+    }
+  });
+  console.log("Deleted viewer users:", viewers.count);
+
+  console.log("Database cleanup completed");
+}
+
+main()
+  .catch((error) => {
+    console.error("Seed failed:", error);
     process.exit(1);
   })
   .finally(async () => {

@@ -9,7 +9,14 @@ const client = new CloudFrontClient({
 
 export async function invalidateCloudFront(paths: string[]) {
   if (!paths.length) return;
+  const validPaths = paths.filter(
+    (p) => p && p.startsWith("/") && !p.includes("undefined")
+  );
 
+  if (!validPaths.length) {
+    console.warn("No valid CloudFront paths to invalidate", paths);
+    return;
+  }
   const distributionId = process.env.CLOUDFRONT_DISTRIBUTION_ID;
 
   if (!distributionId) {
@@ -21,11 +28,12 @@ export async function invalidateCloudFront(paths: string[]) {
     InvalidationBatch: {
       CallerReference: `builddock-${Date.now()}`,
       Paths: {
-        Quantity: paths.length,
-        Items: paths,
+        Quantity: validPaths.length,
+        Items: validPaths,
       },
     },
   });
 
-  await client.send(command);
+  const res = await client.send(command);
+  console.log(res)
 }

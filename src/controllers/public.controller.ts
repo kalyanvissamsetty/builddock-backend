@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
+import { getBaseCDNURL } from "../utils/conditionalRules";
 
 export const redirectToActiveVersion = async (req: Request, res: Response) => {
   const projectSlug = String(req.params.projectSlug);
@@ -38,7 +39,7 @@ export const redirectToActiveVersion = async (req: Request, res: Response) => {
   }
 
   // 4. Build static URL
-  const staticBaseUrl = process.env.STATIC_BASE_URL;
+  const staticBaseUrl = getBaseCDNURL(req.headers.origin);
 
   const redirectUrl = `${staticBaseUrl}${activeVersion.s3Path}/index.html`;
   console.log("redirect - " + redirectUrl);
@@ -51,7 +52,7 @@ export async function openBuild(req: Request, res: Response) {
   const envSlug = String(req.params.envSlug);
   const versionName = String(req.params.versionName);
 
-  const cloudfrontUrl = `${process.env.STATIC_BASE_URL}${projectSlug}/${envSlug}/${versionName}/index.html`;
+  const cloudfrontUrl = `${getBaseCDNURL(req.headers.origin)}${projectSlug}/${envSlug}/${versionName}/index.html`;
 
   return res.redirect(cloudfrontUrl);
 }

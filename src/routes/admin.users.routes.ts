@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/authJwt";
 import { listUsers, updateUserRole } from "../controllers/admin.users.controller";
 import { Role } from "../generated/prisma/client"
 
