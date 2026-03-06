@@ -118,7 +118,7 @@ export async function createInvite(req: Request, res: Response) {
     });
 
     // Send OTP now (invite email template should point to /login-otp?email=...)
-    const appUrl = process.env.APP_BASE_URL || "http://localhost:3000";
+    const appUrl = getBaseFrontEndURL(req.headers.origin);
     const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=invite`;
 
     await generateAndSendOtp(user.id, user.email, {
