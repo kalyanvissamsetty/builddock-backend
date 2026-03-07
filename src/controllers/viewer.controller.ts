@@ -9,6 +9,9 @@ export async function listMyBuilds(req: Request, res: Response) {
     include: {
       version: {
         include: {
+          lastUploadedByUser: {
+            select: { id: true, name: true, email: true },
+          },
           environment: {
             include: {
               project: true,
@@ -16,9 +19,29 @@ export async function listMyBuilds(req: Request, res: Response) {
           },
         },
       },
-      
     },
   });
 
   res.json(builds);
+}
+
+
+export async function getReleaseNotes(req: Request, res: Response) {
+  const versionId = Number(req.params.versionId);
+  if (!versionId) return res.status(400).json({ message: "Invalid versionId" });
+
+  const userId = (req as any).user.id; // from JWT middleware
+
+  const access = await prisma.viewerBuildAccess.findFirst({
+    where: { userId, versionId },
+  });
+
+  if (!access) return res.status(403).json({ message: "Forbidden" });
+
+  const version = await prisma.version.findUnique({
+    where: { id: versionId },
+    select: { id: true, releaseNotes: true, releaseNotesUpdatedAt: true },
+  });
+
+  return res.json(version);
 }

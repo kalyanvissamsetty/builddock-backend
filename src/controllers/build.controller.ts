@@ -7,13 +7,16 @@ import { uploadFolderToS3, deleteS3Prefix } from "../services/s3Upload.service"
 import prisma from "../lib/prisma"
 import { invalidateCloudFront } from "../services/cloudfront.service";
 import { getBaseCDNURL } from "../utils/conditionalRules";
-
+function getAuthUserId(req: any): number | null {
+  const id = req?.user?.id ?? null;
+  return typeof id === "number" ? id : null;
+}
 export async function uploadBuild(req: Request, res: Response, next: NextFunction) {
   try {
     const { projectId, environmentId, versionId } = req.body;
 
     logger.info(`Upload build request: Project=${projectId}, Env=${environmentId}, Version=${versionId}`);
-
+    const releaseNotesRaw = req.body.releaseNotes;
     const projectIdNum = Number(projectId);
     const environmentIdNum = Number(environmentId);
     const versionIdNum = Number(versionId);
@@ -82,7 +85,17 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       where: { id: versionIdNum },
       data: { s3Path: s3KeyBase },
     });
-
+    if (releaseNotesRaw !== null) {
+      await prisma.version.update({
+        where: { id: versionIdNum },
+        data: {
+          releaseNotes: releaseNotesRaw,
+          releaseNotesUpdatedAt: new Date(),
+          lastUploadedAt: new Date(),
+          lastUploadedByUserId: getAuthUserId(req),
+        },
+      });
+    }
     if (version.s3Path != "" && version.s3Path != null) {
       await invalidateCloudFront([
         `/${project.slug}/${environment.slug}/${version.name}/*`,

@@ -62,7 +62,7 @@ app.use("/api/admin/viewer-access", adminViewerAccessRoutes);
 app.use("/api/viewer", viewerRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
 app.get("/health", (req, res)=>{
-  return res.status(200).json({"message": "Health check v6 Data - 6th march"})
+  return res.status(200).json({"message": "Health check v8"})
 })
 const PORT = 4000
 

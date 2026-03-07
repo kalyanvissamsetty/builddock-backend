@@ -36,6 +36,15 @@ model Version {
   createdAt     DateTime    @default(now())
   environment   Environment @relation(fields: [environmentId], references: [id])
   viewerAccess ViewerBuildAccess[]
+
+  releaseNotes String? 
+  releaseNotesUpdatedAt DateTime?
+
+  lastUploadedAt         DateTime?
+  lastUploadedByUserId   Int?
+
+  lastUploadedByUser     User? @relation("VersionUploadedBy", fields: [lastUploadedByUserId], references: [id])
+
   @@unique([environmentId, name])
 }
 
@@ -55,7 +64,8 @@ model User {
   otpLockedUntil   DateTime?
   otpResendAfter   DateTime?
   refreshTokens RefreshToken[]
-invitesCreated  UserInvite[] 
+  invitesCreated  UserInvite[] 
+  uploadedVersions Version[] @relation("VersionUploadedBy")
 }
 
 model VerificationToken {
