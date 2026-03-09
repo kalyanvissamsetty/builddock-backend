@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
-import { Role } from "../generated/prisma/client";
+import { Role } from "../generated/prisma/enums";
 
 export async function requireBuildAccess(
   req: Request,

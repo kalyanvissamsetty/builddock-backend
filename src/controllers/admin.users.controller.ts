@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { Role } from "../generated/prisma/client";
+import { Role } from "../generated/prisma/enums";
 
 // GET /api/admin/users
 export async function listUsers(req: Request, res: Response) {

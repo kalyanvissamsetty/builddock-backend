@@ -2,26 +2,26 @@ import { Router } from "express";
 import { getProjects,createProject, deleteProject, projectDeleteSummary } from "../controllers/project.controller";  
 import environmentRoutes from "./environment.routes";
 import { requireAuth, requireRole } from "../middlewares/authJwt";
-import { Role } from "../generated/prisma/client";
+import { Role } from "../generated/prisma/enums";
 
 const router = Router()
 
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   getProjects,
 );
 router.post(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   createProject,
 );
 router.use(
   "/:projectId/environments",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   environmentRoutes,
 );
 
@@ -29,7 +29,7 @@ router.use(
 router.get(
   "/:id/summary",
   requireAuth,
-  requireRole(["ADMIN"]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   projectDeleteSummary,
 );
 
@@ -37,7 +37,7 @@ router.get(
 router.delete(
   "/:id",
   requireAuth,
-  requireRole(["ADMIN"]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   deleteProject,
 );
 export default router

@@ -7,26 +7,26 @@ import {
 } from "../controllers/environment.controller";
 import verisonRoutes from "./version.routes";
 import { requireAuth, requireRole } from "../middlewares/authJwt";
-import { Role } from "../generated/prisma/client";
+import { Role } from "../generated/prisma/enums";
 
 const router = Router({ mergeParams: true });
 
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
   getEnvironments,
 );
 router.post(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
   createEnvironment,
 );
 router.use(
   "/:environmentId/versions",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA, Role.VIEWER]),
+  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
   verisonRoutes,
 );
 
@@ -34,7 +34,7 @@ router.use(
 router.get(
   "/:envId/summary",
   requireAuth,
-  requireRole(["ADMIN"]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   environmentDeleteSummary,
 );
 
@@ -42,7 +42,7 @@ router.get(
 router.delete(
   "/environments/:envId",
   requireAuth,
-  requireRole(["ADMIN"]),
+  requireRole([Role.ADMIN, Role.MANAGER]),
   deleteEnvironment,
 );
 export default router;

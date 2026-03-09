@@ -3,11 +3,10 @@ import {
   redirectToActiveVersion,
   openBuild,
 } from "../controllers/public.controller";
-import { requireAuth, requireRole } from "../middlewares/authJwt";
+import { requireAuth } from "../middlewares/authJwt";
 import { requireBuildAccess } from "../middlewares/requireBuildAccess";
 
 requireBuildAccess;
-import { Role } from "../generated/prisma/client";
 
 const router = Router();
 

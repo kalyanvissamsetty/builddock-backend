@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
+import { Role } from "../generated/prisma/enums";
 
 function normalizeDomain(input: string) {
     let d = String(input || "").trim().toLowerCase();
@@ -55,7 +56,7 @@ export async function deleteAllowedDomain(req: Request, res: Response) {
             const users = await tx.user.findMany({
                 where: {
                     email: { endsWith: `@${domain}` },
-                    role: { not: "ADMIN" },
+                    role: { not: Role.ADMIN },
                 },
                 select: { id: true },
             });
@@ -98,7 +99,7 @@ export async function domainDeleteSummary(req: Request, res: Response) {
 
     const domain = domainRow.domain;
     const userCount = await prisma.user.count({
-        where: { email: { endsWith: `@${domain}` }, role: { not: "ADMIN" } },
+        where: { email: { endsWith: `@${domain}` }, role: { not: Role.ADMIN } },
     });
 
     const inviteCount = await prisma.userInvite.count({

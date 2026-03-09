@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { activateVersion, createVersion, getVersions } from "../controllers/version.controller";
 import { requireAuth, requireRole } from "../middlewares/authJwt";
-import { Role } from "../generated/prisma/client";
+import { Role } from "../generated/prisma/enums";
 
 const router = Router({mergeParams:true})
 

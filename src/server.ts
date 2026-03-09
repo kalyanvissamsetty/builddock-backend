@@ -14,6 +14,7 @@ import { logger } from "./utils/logger";
 import { requestLogger } from "./middlewares/requestLogger";
 import cookieParser from "cookie-parser";
 import adminRoutes from "./routes/admin.routes"
+import profileRoutes from "./routes/profile.routes";
 
 const app = express()
 
@@ -52,6 +53,8 @@ declare global {
     }
   }
 }
+
+app.use("/api/profile", profileRoutes);
 app.use("/api/builds", buildRoutes)
 app.use("/projects", projectRoutes)
 app.use("/versions", versionRoutes);
@@ -62,7 +65,7 @@ app.use("/api/admin/viewer-access", adminViewerAccessRoutes);
 app.use("/api/viewer", viewerRoutes);
 app.use("/api/admin/users", adminUsersRoutes);
 app.get("/health", (req, res)=>{
-  return res.status(200).json({"message": "Health check v8"})
+  return res.status(200).json({"message": "Health check v9"})
 })
 const PORT = 4000
 

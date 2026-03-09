@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../lib/prisma";
 import { generateAndSendOtp } from "../services/otp.service"; // use your existing function
 import { getAppName, getBaseFrontEndURL } from "../utils/conditionalRules";
+import { Role } from "../generated/prisma/enums";
 
 function normalizeEmail(email: string) {
     return String(email || "").trim().toLowerCase();
@@ -41,7 +42,7 @@ export async function listInvites(req: Request, res: Response) {
 
 // POST /api/admin/invites
 // body: { email, name? }
-const ALLOWED_INVITE_ROLES = ["VIEWER", "DEV", "QA"] as const;
+const ALLOWED_INVITE_ROLES:Role[] = ["VIEWER", "DEV", "QA","MANAGER"] as const;
 
 export async function createInvite(req: Request, res: Response) {
     const email = normalizeEmail(req.body?.email);

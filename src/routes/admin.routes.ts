@@ -7,10 +7,11 @@ import {
     resendInviteOtp,
 } from "../controllers/admin.invites.controller";
 import { listAllowedDomains, addAllowedDomain, deleteAllowedDomain, domainDeleteSummary } from "../controllers/admin.domains.controller";
+import { Role } from "../generated/prisma/enums";
 
 const router = Router();
 
-router.use(requireAuth, requireRole(["ADMIN"]));
+router.use(requireAuth, requireRole([Role.ADMIN, Role.MANAGER]));
 
 // domains
 router.get("/allowed-domains", listAllowedDomains);

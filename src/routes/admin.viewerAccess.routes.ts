@@ -10,7 +10,7 @@ import { Role } from "../generated/prisma/client"
 const router = Router();
 
 router.use(requireAuth);
-router.use(requireRole([Role.ADMIN]));
+router.use(requireRole([Role.ADMIN, Role.MANAGER]));
 
 router.post("/", assignViewerBuild);
 router.delete("/", removeViewerBuild);
