@@ -8,19 +8,19 @@ const router = Router({mergeParams:true})
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV]),
   getVersions,
 );
 router.post(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV]),
   createVersion,
 );
 router.post(
   "/:versionId/activate",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV]),
   activateVersion,
 );
 

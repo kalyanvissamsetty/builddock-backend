@@ -1,51 +1,55 @@
+import { Client } from '@microsoft/microsoft-graph-client';
 import { Resend } from 'resend';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
+import { ClientSecretCredential } from '@azure/identity';
+
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 type SendOtpCtx = {
-    purpose: "VERIFY_EMAIL" | "LOGIN" | "INVITE";
-    appName?: string;
-    loginOtpLink?: string; // optional, good for LOGIN/INVITE
-    roleLabel?: string; // for INVITE
+  purpose: "VERIFY_EMAIL" | "LOGIN" | "INVITE";
+  appName?: string;
+  loginOtpLink?: string; // optional, good for LOGIN/INVITE
+  roleLabel?: string; // for INVITE
 };
 
 function escapeHtml(input: string) {
-    return input
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  return input
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function renderBaseTemplate(params: {
-    title: string;
-    subtitle?: string;
-    otp: string;
-    primaryActionLabel?: string;
-    primaryActionUrl?: string;
-    extraLines?: string[];
-    appName: string;
+  title: string;
+  subtitle?: string;
+  otp: string;
+  primaryActionLabel?: string;
+  primaryActionUrl?: string;
+  extraLines?: string[];
+  appName: string;
 }) {
-    const title = escapeHtml(params.title);
-    const subtitle = params.subtitle ? escapeHtml(params.subtitle) : "";
-    const otp = escapeHtml(params.otp);
-    const appName = escapeHtml(params.appName);
+  const title = escapeHtml(params.title);
+  const subtitle = params.subtitle ? escapeHtml(params.subtitle) : "";
+  const otp = escapeHtml(params.otp);
+  const appName = escapeHtml(params.appName);
 
-    const primaryActionLabel = params.primaryActionLabel
-        ? escapeHtml(params.primaryActionLabel)
-        : "";
-    const primaryActionUrl = params.primaryActionUrl
-        ? escapeHtml(params.primaryActionUrl)
-        : "";
+  const primaryActionLabel = params.primaryActionLabel
+    ? escapeHtml(params.primaryActionLabel)
+    : "";
+  const primaryActionUrl = params.primaryActionUrl
+    ? escapeHtml(params.primaryActionUrl)
+    : "";
 
-    const extraLines = params.extraLines ?? [];
+  const extraLines = params.extraLines ?? [];
 
-    const extraHtml = extraLines
-        .map((l) => `<p style="margin: 0 0 10px 0; color: #374151; font-size: 14px;">${escapeHtml(l)}</p>`)
-        .join("");
+  const extraHtml = extraLines
+    .map((l) => `<p style="margin: 0 0 10px 0; color: #374151; font-size: 14px;">${escapeHtml(l)}</p>`)
+    .join("");
 
-    const buttonHtml =
-        primaryActionUrl && primaryActionLabel
-            ? `
+  const buttonHtml =
+    primaryActionUrl && primaryActionLabel
+      ? `
         <div style="margin: 18px 0;">
           <a href="${primaryActionUrl}"
              style="
@@ -67,17 +71,17 @@ function renderBaseTemplate(params: {
           ${primaryActionUrl}
         </p>
       `
-            : "";
+      : "";
 
-    return `
+  return `
   <div style="font-family: Arial, sans-serif; background: #f9fafb; padding: 24px;">
     <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
       <div style="padding: 18px 20px; border-bottom: 1px solid #e5e7eb;">
         <h2 style="margin: 0; font-size: 18px; color: #111827;">${title}</h2>
         ${subtitle
-            ? `<p style="margin: 8px 0 0 0; color: #6b7280; font-size: 13px; line-height: 1.4;">${subtitle}</p>`
-            : ""
-        }
+      ? `<p style="margin: 8px 0 0 0; color: #6b7280; font-size: 13px; line-height: 1.4;">${subtitle}</p>`
+      : ""
+    }
       </div>
 
       <div style="padding: 20px;">
@@ -110,63 +114,149 @@ function renderBaseTemplate(params: {
 }
 
 export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
-    const appName = ctx.appName ?? "Mosaic WebGL Viewer";
+  const appName = ctx.appName ?? "Mosaic WebGL Viewer";
 
-    // Choose subject and body content by purpose
-    let subject = "";
-    let html = "";
+  // Choose subject and body content by purpose
+  let subject = "";
+  let html = "";
 
-    if (ctx.purpose === "VERIFY_EMAIL") {
-        subject = `Confirm your ${appName} account`;
-        html = renderBaseTemplate({
-            title: "Confirm your account",
-            subtitle: `Thank you for joining ${appName}. Use this code to complete your registration.`,
-            otp,
-            appName,
-        });
-    }
+  if (ctx.purpose === "VERIFY_EMAIL") {
+    subject = `Confirm your ${appName} account`;
+    html = renderBaseTemplate({
+      title: "Confirm your account",
+      subtitle: `Thank you for joining ${appName}. Use this code to complete your registration.`,
+      otp,
+      appName,
+    });
+  }
 
-    if (ctx.purpose === "LOGIN") {
-        subject = `Your ${appName} login code`;
-        html = renderBaseTemplate({
-            title: "Sign in to your account",
-            subtitle: `Use this code to sign in to ${appName}.`,
-            otp,
-            primaryActionLabel: ctx.loginOtpLink ? "Open login page" : undefined,
-            primaryActionUrl: ctx.loginOtpLink,
-            appName,
-        });
-    }
+  if (ctx.purpose === "LOGIN") {
+    subject = `Your ${appName} login code`;
+    html = renderBaseTemplate({
+      title: "Sign in to your account",
+      subtitle: `Use this code to sign in to ${appName}.`,
+      otp,
+      primaryActionLabel: ctx.loginOtpLink ? "Open login page" : undefined,
+      primaryActionUrl: ctx.loginOtpLink,
+      appName,
+    });
+  }
 
-    if (ctx.purpose === "INVITE") {
-        subject = `You have been invited to ${appName}`;
-        const roleLine = ctx.roleLabel ? `Role: ${ctx.roleLabel}` : undefined;
+  if (ctx.purpose === "INVITE") {
+    subject = `You have been invited to ${appName}`;
+    const roleLine = ctx.roleLabel ? `Role: ${ctx.roleLabel}` : undefined;
 
-        html = renderBaseTemplate({
-            title: "You have been invited",
-            subtitle: `You have been invited to access ${appName}.`,
-            otp,
-            primaryActionLabel: ctx.loginOtpLink ? "Accept invite and sign in" : undefined,
-            primaryActionUrl: ctx.loginOtpLink,
-            extraLines: [
-                roleLine ? roleLine : "",
-                "Use the OTP below to sign in.",
-            ].filter(Boolean),
-            appName,
-        });
-    }
+    html = renderBaseTemplate({
+      title: "You have been invited",
+      subtitle: `You have been invited to access ${appName}.`,
+      otp,
+      primaryActionLabel: ctx.loginOtpLink ? "Accept invite and sign in" : undefined,
+      primaryActionUrl: ctx.loginOtpLink,
+      extraLines: [
+        roleLine ? roleLine : "",
+        "Use the OTP below to sign in.",
+      ].filter(Boolean),
+      appName,
+    });
+  }
+  // if (appName.toLowerCase().includes("mosaic")) {
 
-    try {
-        const data = await resend.emails.send({
-            from: `TIMS Studio <${process.env.SES_FROM_EMAIL as string}>`,
-            to: [to],
-            subject,
-            html,
-        });
-
-        return data;
-    } catch (error) {
-        console.error("sendOtpEmail error", error);
-        throw error;
-    }
+  //   return await sendMosaicMail({
+  //     to,
+  //     subject,
+  //     html
+  //   });
+  // }
+  return await sendTIMSMail({
+    to,
+    subject,
+    html
+  });
 }
+
+type SendEmailParams = {
+  to: string;
+  subject: string;
+  html: string;
+};
+
+const sendTIMSMail = async ({ to, subject, html }: SendEmailParams) => {
+  try {
+    const data = await resend.emails.send({
+      from: `TIMS Studio <${process.env.SES_FROM_EMAIL as string}>`,
+      to: [to],
+      subject,
+      html,
+    });
+
+    return data;
+  } catch (error) {
+    console.error("sendEmail error", error);
+    throw error;
+  }
+};
+
+const sendMosaicMail = async ({ to, subject, html }: SendEmailParams) => {
+  const {
+    TENANT_ID,
+    CLIENT_ID,
+    CLIENT_SECRET,
+    MOSAIC_SENDER_EMAIL,
+  } = process.env;
+
+  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET || !MOSAIC_SENDER_EMAIL) {
+    throw new Error(
+      'Missing required env vars: TENANT_ID, CLIENT_ID, CLIENT_SECRET, SENDER_EMAIL'
+    );
+  }
+
+  const credential = new ClientSecretCredential(
+    TENANT_ID,
+    CLIENT_ID,
+    CLIENT_SECRET
+  );
+  const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+    scopes: ['https://graph.microsoft.com/.default'],
+  });
+  const options = {
+    authProvider,
+  };
+
+  //const client = Client.init(options);
+  const client = Client.initWithMiddleware({
+    authProvider,
+  });
+  const sendMail = {
+    message: {
+      subject: subject,
+      body: {
+        contentType: 'HTML',
+        content: html
+      },
+      toRecipients: [
+        {
+          emailAddress: {
+            address: to
+          }
+        }
+      ],
+    },
+    saveToSentItems: 'true'
+  };
+
+  await client.api('/me/sendMail')
+    .post(sendMail);
+  try {
+    const data = await resend.emails.send({
+      from: `WebGL Viewer <${MOSAIC_SENDER_EMAIL as string}>`,
+      to: [to],
+      subject,
+      html,
+    });
+
+    return data;
+  } catch (error) {
+    console.error("MOSAIC EMAIL SEND error", error);
+    throw error;
+  }
+};

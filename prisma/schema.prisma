@@ -87,7 +87,6 @@ enum Role {
   ADMIN
   DEV
   VIEWER
-  QA
   MANAGER
 }
 

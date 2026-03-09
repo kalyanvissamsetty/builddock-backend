@@ -42,7 +42,7 @@ export async function listInvites(req: Request, res: Response) {
 
 // POST /api/admin/invites
 // body: { email, name? }
-const ALLOWED_INVITE_ROLES:Role[] = ["VIEWER", "DEV", "QA","MANAGER"] as const;
+const ALLOWED_INVITE_ROLES:Role[] = ["VIEWER", "DEV","MANAGER"] as const;
 
 export async function createInvite(req: Request, res: Response) {
     const email = normalizeEmail(req.body?.email);
@@ -125,7 +125,7 @@ export async function createInvite(req: Request, res: Response) {
     await generateAndSendOtp(user.id, user.email, {
         purpose: "INVITE",
         loginOtpLink,
-        roleLabel: role, // VIEWER/DEV/QA
+        roleLabel: role, // VIEWER/DEV/MANAGER
         appName: getAppName(req.headers.origin),
     });
 

@@ -190,3 +190,25 @@ export async function deleteBuild(req: Request, res: Response, next: NextFunctio
     next(error)
   }
 }
+
+
+export async function listAllBuilds(req: Request, res: Response) {
+  const builds = await prisma.version.findMany({
+    include: {
+      lastUploadedByUser: {
+        select: { id: true, name: true, email: true },
+      },
+      environment: {
+        include: {
+          project: true,
+        },
+      },
+    },
+    orderBy: [
+      { lastUploadedAt: "desc" },
+      { createdAt: "desc" },
+    ],
+  });
+
+  res.json(builds);
+}

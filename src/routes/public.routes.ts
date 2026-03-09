@@ -6,14 +6,10 @@ import {
 import { requireAuth } from "../middlewares/authJwt";
 import { requireBuildAccess } from "../middlewares/requireBuildAccess";
 
-requireBuildAccess;
 
 const router = Router();
-
-router.get("/:projectSlug/:envSlug",requireAuth, redirectToActiveVersion);
-router.get(
-  "/:projectSlug/:envSlug/:versionName",
-  requireAuth,
-  requireBuildAccess,openBuild,
-);
+router.use(requireAuth)
+router.use(requireBuildAccess)
+router.get("/:projectSlug/:envSlug", redirectToActiveVersion);
+router.get("/:projectSlug/:envSlug/:versionName", openBuild);
 export default router;

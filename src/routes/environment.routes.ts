@@ -14,19 +14,19 @@ const router = Router({ mergeParams: true });
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]), 
   getEnvironments,
 );
 router.post(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV]),
   createEnvironment,
 );
 router.use(
   "/:environmentId/versions",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV, Role.QA]),
+  requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]),
   verisonRoutes,
 );
 
@@ -34,7 +34,7 @@ router.use(
 router.get(
   "/:envId/summary",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV]),
   environmentDeleteSummary,
 );
 
@@ -42,7 +42,7 @@ router.get(
 router.delete(
   "/environments/:envId",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV]),
   deleteEnvironment,
 );
 export default router;

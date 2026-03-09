@@ -9,19 +9,19 @@ const router = Router()
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]),
   getProjects,
 );
 router.post(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN , Role.DEV]),
   createProject,
 );
 router.use(
   "/:projectId/environments",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]),
   environmentRoutes,
 );
 
@@ -29,7 +29,7 @@ router.use(
 router.get(
   "/:id/summary",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV]),
   projectDeleteSummary,
 );
 
@@ -37,7 +37,7 @@ router.get(
 router.delete(
   "/:id",
   requireAuth,
-  requireRole([Role.ADMIN, Role.MANAGER]),
+  requireRole([Role.ADMIN, Role.DEV]),
   deleteProject,
 );
 export default router

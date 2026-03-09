@@ -7,9 +7,9 @@ import {
 } from "../controllers/profile.controller";
 
 const router = Router();
-
-router.get("/", requireAuth, getProfile);
-router.patch("/", requireAuth, updateProfile);
-router.patch("/password", requireAuth, updatePassword);
+router.use(requireAuth);
+router.get("/", getProfile);
+router.patch("/", updateProfile);
+router.patch("/password", updatePassword);
 
 export default router;
