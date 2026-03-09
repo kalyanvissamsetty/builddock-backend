@@ -14,7 +14,7 @@ export async function generateAndSendOtp(
   userId: number,
   email: string,
   ctx: OtpEmailContext = {},
-) {
+):Promise<Boolean> {
   const otp = generateOTP();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -28,7 +28,7 @@ export async function generateAndSendOtp(
     },
   });
 
-  await sendOtpEmail(email, otp, {
+  return await sendOtpEmail(email, otp, {
     purpose: ctx.purpose ?? "VERIFY_EMAIL", // default keeps old behavior
     appName: ctx.appName ?? "Mosaic WebGL Viewer",
     loginOtpLink: ctx.loginOtpLink,

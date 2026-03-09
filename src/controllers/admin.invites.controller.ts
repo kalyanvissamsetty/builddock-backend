@@ -78,18 +78,7 @@ export async function createInvite(req: Request, res: Response) {
 
     // Create or update user
     let user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-        user = await prisma.user.create({
-            data: {
-                email,
-                name,
-                role: role as any,
-                isEmailVerified: true,
-                passwordHash: null,
-            },
-        });
-    } else {
+    if(user){
         return res.status(409).json({
             message: "User already exists. Use Promote Users to change role or re-send OTP login.",
         });
@@ -105,7 +94,34 @@ export async function createInvite(req: Request, res: Response) {
         });
     }
 
-    
+
+    // Send OTP now (invite email template should point to /login-otp?email=...)
+    const appUrl = getBaseFrontEndURL(req.headers.origin);
+    const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=invite`;
+    user = await prisma.user.create({
+        data: {
+            email,
+            name,
+            role: role as any,
+            isEmailVerified: true,
+            passwordHash: null,
+        },
+    });
+    const emailResponse:Boolean = await generateAndSendOtp(user.id, user.email, {
+        purpose: "INVITE",
+        loginOtpLink,
+        roleLabel: role, // VIEWER/DEV/MANAGER
+        appName: getAppName(req.headers.origin),
+    });
+    console.log("email response: "+emailResponse)
+    if(!emailResponse){
+        await prisma.user.delete({
+            where: { id: user.id },
+        })
+        return res.status(400).json({
+            message: "Failed to send Invite email to user",
+        });
+    }
     const invite = await prisma.userInvite.create({
         data: {
             email,
@@ -116,17 +132,6 @@ export async function createInvite(req: Request, res: Response) {
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
             status: "PENDING",
         },
-    });
-
-    // Send OTP now (invite email template should point to /login-otp?email=...)
-    const appUrl = getBaseFrontEndURL(req.headers.origin);
-    const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=invite`;
-
-    await generateAndSendOtp(user.id, user.email, {
-        purpose: "INVITE",
-        loginOtpLink,
-        roleLabel: role, // VIEWER/DEV/MANAGER
-        appName: getAppName(req.headers.origin),
     });
 
     return res.status(201).json({

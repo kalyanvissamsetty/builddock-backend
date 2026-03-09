@@ -2,6 +2,7 @@ import { Client } from '@microsoft/microsoft-graph-client';
 import { Resend } from 'resend';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
 import { ClientSecretCredential } from '@azure/identity';
+import { error } from 'node:console';
 
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 type SendOtpCtx = {
@@ -159,14 +160,14 @@ export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
       appName,
     });
   }
-  // if (appName.toLowerCase().includes("mosaic")) {
-
-  //   return await sendMosaicMail({
-  //     to,
-  //     subject,
-  //     html
-  //   });
-  // }
+  if (appName.toLowerCase().includes("mosaic")) {
+console.log("in mosaic if mail")
+    return await sendMosaicMail({
+      to,
+      subject,
+      html
+    });
+  }
   return await sendTIMSMail({
     to,
     subject,
@@ -180,19 +181,24 @@ type SendEmailParams = {
   html: string;
 };
 
-const sendTIMSMail = async ({ to, subject, html }: SendEmailParams) => {
+const sendTIMSMail = async ({ to, subject, html }: SendEmailParams): Promise<boolean> => {
   try {
-    const data = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: `TIMS Studio <${process.env.SES_FROM_EMAIL as string}>`,
       to: [to],
       subject,
       html,
     });
 
-    return data;
+    if (error) {
+      console.error("sendEmail error:", error);
+      return false;
+    }
+
+    return true;
   } catch (error) {
-    console.error("sendEmail error", error);
-    throw error;
+    console.error("sendEmail error:", error);
+    return false;
   }
 };
 
@@ -221,42 +227,35 @@ const sendMosaicMail = async ({ to, subject, html }: SendEmailParams) => {
   const options = {
     authProvider,
   };
-
-  //const client = Client.init(options);
+console.log("before client")
   const client = Client.initWithMiddleware({
     authProvider,
   });
-  const sendMail = {
-    message: {
-      subject: subject,
-      body: {
-        contentType: 'HTML',
-        content: html
+try{
+  const data = await client
+    .api(`/users/${encodeURIComponent(MOSAIC_SENDER_EMAIL)}/sendMail`)
+    .post({
+      message: {
+        subject: subject,
+        body: {
+          contentType: "HTML",
+          content: html,
+        },
+        toRecipients: [
+          {
+            emailAddress: {
+              address: to,
+            },
+          },
+        ],
       },
-      toRecipients: [
-        {
-          emailAddress: {
-            address: to
-          }
-        }
-      ],
-    },
-    saveToSentItems: 'true'
-  };
-
-  await client.api('/me/sendMail')
-    .post(sendMail);
-  try {
-    const data = await resend.emails.send({
-      from: `WebGL Viewer <${MOSAIC_SENDER_EMAIL as string}>`,
-      to: [to],
-      subject,
-      html,
+      saveToSentItems: true,
     });
-
-    return data;
-  } catch (error) {
-    console.error("MOSAIC EMAIL SEND error", error);
-    throw error;
+    return true
   }
+    catch(err: any){
+  console.error("Graph sendMail failed:", err?.body || err?.message);
+      return false
+    }
+  
 };
