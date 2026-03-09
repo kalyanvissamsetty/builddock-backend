@@ -90,7 +90,7 @@ function renderBaseTemplate(params: {
         </div>
 
         <p style="margin: 14px 0 0 0; color: #6b7280; font-size: 13px;">
-          This code will expire in 10 minutes.
+          This code will expire in 15 minutes.
         </p>
 
         ${buttonHtml}
