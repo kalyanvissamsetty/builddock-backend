@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../lib/prisma";
 import { getBaseCDNURL } from "../utils/conditionalRules";
+import { setCloudFrontCookiesAndRedirect } from "../services/signedcookies.service";
 
 export const redirectToActiveVersion = async (req: Request, res: Response) => {
   const projectSlug = String(req.params.projectSlug);
@@ -37,14 +38,8 @@ export const redirectToActiveVersion = async (req: Request, res: Response) => {
   if (!activeVersion) {
     return res.status(404).send("No active version");
   }
-
-  // 4. Build static URL
-  const staticBaseUrl = getBaseCDNURL(req.headers.origin || req.headers.host);
-
-  const redirectUrl = `${staticBaseUrl}${activeVersion.s3Path}/index.html`;
-  console.log("redirect - " + redirectUrl);
-  // 5. Redirect
-  return res.redirect(302, redirectUrl);
+  
+  return setCloudFrontCookiesAndRedirect(req, res, activeVersion.s3Path);
 };
 
 export async function openBuild(req: Request, res: Response) {
@@ -52,7 +47,7 @@ export async function openBuild(req: Request, res: Response) {
   const envSlug = String(req.params.envSlug);
   const versionName = String(req.params.versionName);
 
-  const cloudfrontUrl = `${getBaseCDNURL(req.headers.origin || req.headers.host)}${projectSlug}/${envSlug}/${versionName}/index.html`;
+  const s3Path = `${projectSlug}/${envSlug}/${versionName}`;
 
-  return res.redirect(cloudfrontUrl);
+  return setCloudFrontCookiesAndRedirect(req, res, s3Path);
 }

@@ -6,6 +6,13 @@ export function getBaseFrontEndURL(origin?: string){
     return "http://localhost:3000"
 }
 
+export function getBaseOriginDomain(origin?: string){
+    if (origin?.includes("themosaiccompany")) return ".themosaiccompany.com";
+    if (origin?.includes("timsstudio")) {
+        return ".timsstudio.tech"
+    }
+    return ".timsstudio.tech"
+}
 export function getBaseCDNURL(origin?: string) {
     if (origin?.includes("themosaiccompany")) return "https://preview-cdn.themosaiccompany.com/";
     if (origin?.includes("timsstudio")) {

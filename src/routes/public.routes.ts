@@ -1,7 +1,6 @@
 import { Router } from "express";
 import {
-  redirectToActiveVersion,
-  openBuild,
+  redirectToActiveVersion, openBuild
 } from "../controllers/public.controller";
 import { requireAuth } from "../middlewares/authJwt";
 import { requireBuildAccess } from "../middlewares/requireBuildAccess";

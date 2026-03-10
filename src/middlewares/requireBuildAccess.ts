@@ -25,8 +25,8 @@ export async function requireBuildAccess(
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  // Admin & Developer bypass
-  if (user.role === Role.ADMIN || user.role === Role.DEV) {
+  // Admin, Manager, Developer bypass
+  if (user.role === Role.ADMIN || user.role === Role.DEV || user.role == Role.MANAGER) {
     return next();
   }
 
