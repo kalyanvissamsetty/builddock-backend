@@ -40,7 +40,7 @@ router.get(
 
 // cascade delete env, versions
 router.delete(
-  "/environments/:envId",
+  "/:envId",
   requireAuth,
   requireRole([Role.ADMIN, Role.DEV]),
   deleteEnvironment,
