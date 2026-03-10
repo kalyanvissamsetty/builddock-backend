@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { getBaseOriginDomain } from "./conditionalRules";
 
 function cookieOptions(req: Request) {
     const isProd = process.env.NODE_ENV === "production";
@@ -16,11 +17,7 @@ function cookieOptions(req: Request) {
     }
 
     // Production domain handling
-    let domain = process.env.COOKIE_DOMAIN;
-
-    const host = req.headers.host || "";
-    if (host.includes("themosaiccompany")) domain = ".themosaiccompany.com";
-    else domain = ".timsstudio.tech";
+    let domain = getBaseOriginDomain(req.headers.origin || req.headers.host);
 
     return {
         ...base,
@@ -57,4 +54,28 @@ export function clearAuthCookies(req: Request, res: Response) {
     // Extra fallback: clear without domain too (handles older cookies set differently)
     res.clearCookie("timsstudio_access", { path: "/" });
     res.clearCookie("timsstudio_refresh", { path: "/" });
+}
+
+function cloudFrontCookieOptions(req: Request) {
+    const domain = getBaseOriginDomain(req.headers.origin || req.headers.host);
+    const opts: any = {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+    };
+    if (domain) opts.domain = domain;
+    return opts;
+}
+
+export function clearCloudFrontCookies(req: Request, res: Response) {
+    const opts = cloudFrontCookieOptions(req);
+    res.clearCookie("CloudFront-Policy", opts);
+    res.clearCookie("CloudFront-Signature", opts);
+    res.clearCookie("CloudFront-Key-Pair-Id", opts);
+
+    // fallback (domain mismatch safety)
+    res.clearCookie("CloudFront-Policy", { path: "/" });
+    res.clearCookie("CloudFront-Signature", { path: "/" });
+    res.clearCookie("CloudFront-Key-Pair-Id", { path: "/" });
 }

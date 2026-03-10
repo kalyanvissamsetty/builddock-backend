@@ -9,10 +9,10 @@ function readPrivateKey(): string {
 }
 
 function cookieOpts(req: Request) {
-    const secure = (process.env.CLOUDFRONT_COOKIE_SECURE ?? "true") === "true";
+    const secure = "true";
     const domain = getBaseOriginDomain(req.headers.origin || req.headers.host);
     const opts: any = {
-        httpOnly: false,
+        httpOnly: true,
         secure,
         sameSite: "lax",
         path: "/",
@@ -21,50 +21,6 @@ function cookieOpts(req: Request) {
     return opts;
 }
 
-export async function openBuild(req: Request, res: Response) {
-    const projectSlug = String(req.params.projectSlug);
-    const envSlug = String(req.params.envSlug);
-    const versionName = String(req.params.versionName);
-
-    const cdnBase = getBaseCDNURL(req.headers.origin || req.headers.host);
-    const cloudfrontUrl = `${cdnBase}${projectSlug}/${envSlug}/${versionName}/index.html`;
-    const resourcePattern = `${cdnBase}${projectSlug}/${envSlug}/${versionName}/*`;
-
-    const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID;
-    if (!keyPairId) throw new Error("CLOUDFRONT_KEY_PAIR_ID not configured");
-
-    const ttlSeconds = Number(process.env.CLOUDFRONT_TTL_SECONDS ?? "600");
-    const expiresEpoch = Math.floor((Date.now() + ttlSeconds * 1000) / 1000);
-
-    const policy = JSON.stringify({
-        Statement: [
-            {
-                Resource: resourcePattern,
-                Condition: {
-                    DateLessThan: { "AWS:EpochTime": expiresEpoch },
-                },
-            },
-        ],
-    });
-
-    const signedCookies = getSignedCookies({
-        keyPairId,
-        privateKey: readPrivateKey(),
-        policy,
-    });
-
-    const expiresAt = new Date(expiresEpoch * 1000);
-    const opts = cookieOpts(req);
-
-    res.cookie("CloudFront-Policy", signedCookies["CloudFront-Policy"], { ...opts, expires: expiresAt });
-    res.cookie("CloudFront-Signature", signedCookies["CloudFront-Signature"], { ...opts, expires: expiresAt });
-    res.cookie("CloudFront-Key-Pair-Id", signedCookies["CloudFront-Key-Pair-Id"], { ...opts, expires: expiresAt });
-
-    return res.redirect(cloudfrontUrl);
-}
-
-
-// This is the reusable core
 export function setCloudFrontCookiesAndRedirect(
     req: Request,
     res: Response,
@@ -79,7 +35,8 @@ export function setCloudFrontCookiesAndRedirect(
     const expiresAt = new Date(expiresEpoch * 1000);
 
     const redirectUrl = `${cdnBase}${s3Path}/index.html`;
-    const resourcePattern = `${cdnBase}${s3Path}/*`;
+    //const resourcePattern = `${cdnBase}${s3Path}/*`;
+    const resourcePattern = `${cdnBase}/*`;
 
     const policy = JSON.stringify({
         Statement: [

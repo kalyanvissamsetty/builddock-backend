@@ -8,7 +8,6 @@ import { requireBuildAccess } from "../middlewares/requireBuildAccess";
 
 const router = Router();
 router.use(requireAuth)
-router.use(requireBuildAccess)
-router.get("/:projectSlug/:envSlug", redirectToActiveVersion);
-router.get("/:projectSlug/:envSlug/:versionName", openBuild);
+router.get("/:projectSlug/:envSlug/:versionName", requireBuildAccess,openBuild);
+router.get("/:projectSlug/:envSlug" ,redirectToActiveVersion);
 export default router;

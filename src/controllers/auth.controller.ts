@@ -7,7 +7,7 @@ import { verifyPassword } from "../utils/password";
 import { generateAndSendOtp } from "../services/otp.service";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import crypto from "crypto";
-import { clearAuthCookies,  setAuthCookies } from "../utils/cookies";
+import { clearAuthCookies,  clearCloudFrontCookies,  setAuthCookies } from "../utils/cookies";
 import { AuthedRequest } from "../middlewares/authJwt";
 import { isEmailDomainAllowed } from "../utils/emailDomain";
 import { getAppName, getBaseFrontEndURL } from "../utils/conditionalRules";
@@ -232,5 +232,6 @@ export async function logout(req: Request, res: Response) {
   }
 
   clearAuthCookies(req, res);
+  clearCloudFrontCookies(req, res);
   return res.status(204).send();
 }

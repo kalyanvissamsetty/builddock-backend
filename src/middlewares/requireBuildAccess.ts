@@ -10,8 +10,8 @@ export async function requireBuildAccess(
   const projectSlug = String(req.params.projectSlug);
   const envSlug = String(req.params.envSlug);
   const versionName = String(req.params.versionName);
-  const userId = req.user!.id;
 
+  const userId = req.user!.id;
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
