@@ -36,7 +36,7 @@ export function setCloudFrontCookiesAndRedirect(
 
     const redirectUrl = `${cdnBase}${s3Path}/index.html`;
     //const resourcePattern = `${cdnBase}${s3Path}/*`;
-    const resourcePattern = `${cdnBase}/*`;
+    const resourcePattern = `${cdnBase}*`;
 
     const policy = JSON.stringify({
         Statement: [

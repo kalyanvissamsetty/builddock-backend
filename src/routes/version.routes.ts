@@ -8,7 +8,7 @@ const router = Router({mergeParams:true})
 router.get(
   "/",
   requireAuth,
-  requireRole([Role.ADMIN, Role.DEV]),
+  requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]),
   getVersions,
 );
 router.post(
