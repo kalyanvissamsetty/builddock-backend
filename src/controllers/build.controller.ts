@@ -2,11 +2,13 @@ import { NextFunction, Request, Response } from "express"
 import { logger } from "../utils/logger";
 import fs from "fs"
 import path from "path"
-import unzipper from "unzipper"
-import { uploadFolderToS3, deleteS3Prefix } from "../services/s3Upload.service"
+import { uploadFolderToS3, deleteS3Prefix, uploadFolderToS3WithProgress } from "../services/s3Upload.service"
 import prisma from "../lib/prisma"
 import { invalidateCloudFront } from "../services/cloudfront.service";
 import { getBaseCDNURL } from "../utils/conditionalRules";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
 function getAuthUserId(req: any): number | null {
   const id = req?.user?.id ?? null;
   return typeof id === "number" ? id : null;
@@ -55,17 +57,28 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
     )
 
     fs.mkdirSync(extractDir, { recursive: true });
+    const execFileAsync = promisify(execFile);
+    await execFileAsync("unzip", ["-o", zipPath, "-d", extractDir]);
 
-    await fs.
-      createReadStream(zipPath)
-      .pipe(unzipper.Extract({ path: extractDir }))
-      .promise()
-    validateUnityWebglBuild(extractDir)
+    logger.info(`Build extracted to ${extractDir}`);
+    logFolderTree(extractDir, "AFTER_UNZIP");
+
+    validateUnityWebglBuild(extractDir);
+    // await fs.
+    //   createReadStream(zipPath)
+    //   .pipe(unzipper.Extract({ path: extractDir }))
+    //   .promise()
+    // validateUnityWebglBuild(extractDir)
     logger.info(`Build extracted to ${extractDir}`);
 
     const s3KeyBase = `${project.slug}/${environment.slug}/${version.name}`;
     logger.info(`Uploading to S3: ${s3KeyBase}`);
-    await uploadFolderToS3(extractDir, s3KeyBase)
+    //await uploadFolderToS3(extractDir, s3KeyBase)
+    await uploadFolderToS3WithProgress(extractDir, s3KeyBase, (progress) => {
+      logger.info(
+        `[${progress.overallPercent}%] Uploading ${progress.currentFile} (${progress.currentFilePercent}%)`,
+      );
+    });
     logger.info(`Upload to S3 completed: ${s3KeyBase}`);
     cleanUpTempFiles(zipPath, extractDir);
     const versions = await prisma.version.findMany({
@@ -112,9 +125,13 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       extractedPath: extractDir,
       isThisVersionDefault: isFirstVersion || versionBeingUploaded?.isActive,
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error("Error uploading build", error);
-    next(error)
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    })
+    //next(error)
   }
 }
 
@@ -131,7 +148,26 @@ function validateUnityWebglBuild(extractDir: string) {
     throw new Error("index.html or Build/ folder is missing")
   }
 }
+function logFolderTree(dir: string, label: string, baseDir: string = dir) {
+  if (!fs.existsSync(dir)) {
+    logger.warn(`[${label}] Directory does not exist: ${dir}`);
+    return;
+  }
 
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
+
+    if (entry.isDirectory()) {
+      logger.info(`[${label}] DIR  : ${relativePath}`);
+      logFolderTree(fullPath, label, baseDir);
+    } else {
+      logger.info(`[${label}] FILE : ${relativePath}`);
+    }
+  }
+}
 function cleanUpTempFiles(zipPath: string, extractDir: string) {
   if (fs.existsSync(zipPath))
     fs.unlinkSync(zipPath)

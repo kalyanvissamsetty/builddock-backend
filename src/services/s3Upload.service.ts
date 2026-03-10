@@ -2,7 +2,17 @@ import { S3Client, PutObjectCommand, ListObjectsCommand, DeleteObjectsCommand, L
 import { logger } from "../utils/logger";
 import fs from "fs";
 import path from "path";
+import { Upload } from "@aws-sdk/lib-storage";
 
+type FolderUploadProgress = {
+  currentFile: string;
+  currentFileLoaded: number;
+  currentFileTotal: number;
+  currentFilePercent: number;
+  overallLoaded: number;
+  overallTotal: number;
+  overallPercent: number;
+};
 console.log("Using S3 region:", process.env.AWS_REGION);
 
 const s3 = new S3Client({
@@ -24,15 +34,17 @@ export class S3PrefixDeleteError extends Error {
 }
 // Helper function to get all files recursively
 function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
-  const files = fs.readdirSync(dirPath);
+  const files = fs.readdirSync(dirPath, { withFileTypes: true });
 
-  files.forEach(function (file) {
-    if (fs.statSync(dirPath + "/" + file).isDirectory()) {
-      arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
-    } else {
-      arrayOfFiles.push(path.join(dirPath, "/", file));
+  for (const file of files) {
+    const fullPath = path.join(dirPath, file.name);
+
+    if (file.isDirectory()) {
+      getAllFiles(fullPath, arrayOfFiles);
+    } else if (file.isFile()) {
+      arrayOfFiles.push(fullPath);
     }
-  });
+  }
 
   return arrayOfFiles;
 }
@@ -40,11 +52,11 @@ function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
 export async function uploadFolderToS3(folderPath: string, s3KeyBase: string) {
   logger.info(`Starting S3 upload from ${folderPath} to s3://${BUCKET_NAME}/${s3KeyBase}`);
   const allLocalFiles = getAllFiles(folderPath);
-
+  
   for (const fullPath of allLocalFiles) {
     // Calculate the relative path from the base folderPath
     const relativePath = path.relative(folderPath, fullPath);
-    const s3Key = path.join(s3KeyBase, relativePath).replace(/\\/g, '/'); // Ensure S3 key uses forward slashes
+    const s3Key = path.posix.join(s3KeyBase, relativePath.replace(/\\/g, "/"));
 
     try {
       // Upload file
@@ -68,7 +80,121 @@ export async function uploadFolderToS3(folderPath: string, s3KeyBase: string) {
     }
   }
 }
+export async function uploadFolderToS3WithProgress(
+  folderPath: string,
+  s3KeyBase: string,
+  onProgress?: (progress: FolderUploadProgress) => void,
+) {
+  logger.info(`Starting S3 upload from ${folderPath} to s3://${BUCKET_NAME}/${s3KeyBase}`);
 
+  const allLocalFiles = getAllFiles(folderPath);
+  logger.info(`Total files found for upload: ${allLocalFiles.length}`);
+
+  for (const fullPath of allLocalFiles) {
+    const relativePath = path.relative(folderPath, fullPath).replace(/\\/g, "/");
+    logger.info(`[UPLOAD_LIST] ${relativePath}`);
+  }
+
+  const pngFiles = allLocalFiles.filter((fullPath) =>
+    fullPath.toLowerCase().endsWith(".png")
+  );
+
+  logger.info(`Total PNG files found for upload: ${pngFiles.length}`);
+
+  for (const fullPath of pngFiles) {
+    const relativePath = path.relative(folderPath, fullPath).replace(/\\/g, "/");
+    logger.info(`[UPLOAD_PNG] ${relativePath}`);
+  }
+  if (allLocalFiles.length === 0) {
+    logger.warn(`No files found in folder: ${folderPath}`);
+    return;
+  }
+
+  // Pre-calculate total folder size for overall progress
+  const filesWithStats = allLocalFiles.map((fullPath) => {
+    const stat = fs.statSync(fullPath);
+    return {
+      fullPath,
+      size: stat.size,
+      relativePath: path.relative(folderPath, fullPath),
+    };
+  });
+
+  const overallTotal = filesWithStats.reduce((sum, file) => sum + file.size, 0);
+  let overallLoaded = 0;
+
+  for (const file of filesWithStats) {
+    const s3Key = path.posix.join(s3KeyBase, file.relativePath.replace(/\\/g, "/"));    const metadata = getS3Metadata(file.relativePath);
+
+    try {
+      logger.debug(`Uploading file: ${s3Key}`);
+
+      const fileStream = fs.createReadStream(file.fullPath);
+
+      let lastLoadedForThisFile = 0;
+
+      const upload = new Upload({
+        client: s3,
+        params: {
+          Bucket: BUCKET_NAME,
+          Key: s3Key,
+          Body: fileStream,
+          ContentType: metadata.ContentType,
+          ContentEncoding: metadata.ContentEncoding,
+        },
+        queueSize: 4, // concurrency for multipart parts
+        partSize: 5 * 1024 * 1024, // 5 MB minimum multipart part size
+        leavePartsOnError: false,
+      });
+
+      upload.on("httpUploadProgress", (progress) => {
+        const loaded = progress.loaded ?? 0;
+        const total = progress.total ?? file.size;
+
+        // Update overall progress only by delta since last event
+        const delta = loaded - lastLoadedForThisFile;
+        if (delta > 0) {
+          overallLoaded += delta;
+          lastLoadedForThisFile = loaded;
+        }
+
+        onProgress?.({
+          currentFile: file.relativePath,
+          currentFileLoaded: loaded,
+          currentFileTotal: total,
+          currentFilePercent: total > 0 ? Math.round((loaded / total) * 100) : 0,
+          overallLoaded,
+          overallTotal,
+          overallPercent: overallTotal > 0 ? Math.round((overallLoaded / overallTotal) * 100) : 0,
+        });
+      });
+
+      await upload.done();
+
+      // Safety: ensure fully counted even if final progress event was missed
+      if (lastLoadedForThisFile < file.size) {
+        overallLoaded += file.size - lastLoadedForThisFile;
+      }
+
+      onProgress?.({
+        currentFile: file.relativePath,
+        currentFileLoaded: file.size,
+        currentFileTotal: file.size,
+        currentFilePercent: 100,
+        overallLoaded,
+        overallTotal,
+        overallPercent: overallTotal > 0 ? Math.round((overallLoaded / overallTotal) * 100) : 100,
+      });
+
+      logger.info(`Uploaded file successfully: ${s3Key}`);
+    } catch (e) {
+      logger.error(`Failed to upload ${s3Key}:`, e);
+      throw e;
+    }
+  }
+
+  logger.info(`Folder upload completed successfully: ${folderPath}`);
+}
 function getContentType(filename: string): string {
   if (filename.endsWith(".html")) return "text/html";
   if (filename.endsWith(".js")) return "application/javascript";
@@ -80,30 +206,40 @@ function getContentType(filename: string): string {
 
 function getS3Metadata(fileName: string) {
   let contentEncoding: string | undefined;
-  let baseName = fileName;
+  let baseName = fileName.toLowerCase();
 
-  // Handle compression
-  if (fileName.endsWith(".gz")) {
+  if (baseName.endsWith(".gz")) {
     contentEncoding = "gzip";
-    baseName = fileName.slice(0, -3);
-  } else if (fileName.endsWith(".br")) {
+    baseName = baseName.slice(0, -3);
+  } else if (baseName.endsWith(".br")) {
     contentEncoding = "br";
-    baseName = fileName.slice(0, -3);
+    baseName = baseName.slice(0, -3);
   }
 
-  // Determine content-type
   let contentType: string | undefined;
 
   if (baseName.endsWith(".wasm")) {
     contentType = "application/wasm";
   } else if (baseName.endsWith(".js")) {
-    contentType = "application/javascript";
+    contentType = "application/javascript; charset=utf-8";
   } else if (baseName.endsWith(".html")) {
-    contentType = "text/html";
+    contentType = "text/html; charset=utf-8";
+  } else if (baseName.endsWith(".css")) {
+    contentType = "text/css; charset=utf-8";
   } else if (baseName.endsWith(".json")) {
-    contentType = "application/json";
+    contentType = "application/json; charset=utf-8";
   } else if (baseName.endsWith(".data")) {
     contentType = "application/octet-stream";
+  } else if (baseName.endsWith(".png")) {
+    contentType = "image/png";
+  } else if (baseName.endsWith(".jpg") || baseName.endsWith(".jpeg")) {
+    contentType = "image/jpeg";
+  } else if (baseName.endsWith(".svg")) {
+    contentType = "image/svg+xml";
+  } else if (baseName.endsWith(".ico")) {
+    contentType = "image/x-icon";
+  } else if (baseName.endsWith(".txt")) {
+    contentType = "text/plain; charset=utf-8";
   }
 
   return {
