@@ -4,7 +4,11 @@ import { Role } from "../generated/prisma/enums";
 
 // GET /api/admin/users
 export async function listUsers(req: Request, res: Response) {
-  const users = await prisma.user.findMany({
+  const verifiedUsers = await prisma.user.findMany({
+    where: {
+      isEmailVerified: true,
+      role: { not: Role.ADMIN },
+    },
     select: {
       id: true,
       name: true,
@@ -16,9 +20,61 @@ export async function listUsers(req: Request, res: Response) {
     orderBy: { createdAt: "asc" },
   });
 
-  res.json(users);
-}
+  const invitedUsers = await prisma.userInvite.findMany({
+    where: {
+      role: { not: Role.ADMIN },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
 
+  const verifiedEmails = new Set(
+    verifiedUsers.map((user) => user.email.toLowerCase())
+  );
+
+  const uniqueInvitedUsers = invitedUsers.filter(
+    (invite) => !verifiedEmails.has(invite.email.toLowerCase())
+  );
+
+  res.json([...verifiedUsers, ...uniqueInvitedUsers]);
+}
+export async function listUser(req: Request, res: Response) {
+  const verifiedUsers = await prisma.user.findMany({
+    where: {
+      isEmailVerified: true,
+      role: { not: Role.ADMIN }
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      isEmailVerified: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const invitedUsers = await prisma.userInvite.findMany({
+    where: {
+      role: { not: Role.ADMIN }
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  res.json([...verifiedUsers, ...invitedUsers]);
+}
 export async function updateUserRole(req: Request, res: Response) {
   const userId = Number(req.params.id);
   const { role } = req.body;

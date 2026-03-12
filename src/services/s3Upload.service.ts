@@ -80,6 +80,40 @@ export async function uploadFolderToS3(folderPath: string, s3KeyBase: string) {
     }
   }
 }
+
+
+const MULTIPART_THRESHOLD = 8 * 1024 * 1024; // 8 MB
+const MULTIPART_PART_SIZE = 8 * 1024 * 1024; // 8 MB
+const MAX_RETRIES = 3;
+
+function isRetriableUploadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const anyErr = error as Error & {
+    code?: string;
+    name?: string;
+    errno?: number;
+    $metadata?: { httpStatusCode?: number };
+  };
+
+  const code = anyErr.code ?? "";
+  const name = anyErr.name ?? "";
+  const status = anyErr.$metadata?.httpStatusCode;
+
+  if (code === "ERANGE") return true;
+  if (code === "ECONNRESET") return true;
+  if (code === "ETIMEDOUT") return true;
+  if (code === "EPIPE") return true;
+  if (name === "TimeoutError") return true;
+  if (status === 500 || status === 502 || status === 503 || status === 504) return true;
+
+  return false;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function uploadFolderToS3WithProgress(
   folderPath: string,
   s3KeyBase: string,
@@ -88,108 +122,147 @@ export async function uploadFolderToS3WithProgress(
   logger.info(`Starting S3 upload from ${folderPath} to s3://${BUCKET_NAME}/${s3KeyBase}`);
 
   const allLocalFiles = getAllFiles(folderPath);
-  logger.info(`Total files found for upload: ${allLocalFiles.length}`);
 
-  for (const fullPath of allLocalFiles) {
-    const relativePath = path.relative(folderPath, fullPath).replace(/\\/g, "/");
-    logger.info(`[UPLOAD_LIST] ${relativePath}`);
-  }
-
-  const pngFiles = allLocalFiles.filter((fullPath) =>
-    fullPath.toLowerCase().endsWith(".png")
-  );
-
-  logger.info(`Total PNG files found for upload: ${pngFiles.length}`);
-
-  for (const fullPath of pngFiles) {
-    const relativePath = path.relative(folderPath, fullPath).replace(/\\/g, "/");
-    logger.info(`[UPLOAD_PNG] ${relativePath}`);
-  }
   if (allLocalFiles.length === 0) {
     logger.warn(`No files found in folder: ${folderPath}`);
     return;
   }
 
-  // Pre-calculate total folder size for overall progress
   const filesWithStats = allLocalFiles.map((fullPath) => {
     const stat = fs.statSync(fullPath);
+    const relativePath = path.relative(folderPath, fullPath).replace(/\\/g, "/");
+
     return {
       fullPath,
       size: stat.size,
-      relativePath: path.relative(folderPath, fullPath),
+      relativePath,
+      s3Key: path.posix.join(s3KeyBase, relativePath),
+      metadata: getS3Metadata(relativePath),
     };
   });
+
+  logger.info(`Total files found for upload: ${filesWithStats.length}`);
+  for (const file of filesWithStats) {
+    logger.info(`[UPLOAD_LIST] ${file.relativePath} (${file.size} bytes)`);
+  }
 
   const overallTotal = filesWithStats.reduce((sum, file) => sum + file.size, 0);
   let overallLoaded = 0;
 
+  const emitProgress = (
+    file: {
+      relativePath: string;
+      size: number;
+    },
+    currentFileLoaded: number,
+    currentFileTotal: number,
+  ) => {
+    onProgress?.({
+      currentFile: file.relativePath,
+      currentFileLoaded,
+      currentFileTotal,
+      currentFilePercent:
+        currentFileTotal > 0 ? Math.round((currentFileLoaded / currentFileTotal) * 100) : 0,
+      overallLoaded,
+      overallTotal,
+      overallPercent: overallTotal > 0 ? Math.round((overallLoaded / overallTotal) * 100) : 0,
+    });
+  };
+
   for (const file of filesWithStats) {
-    const s3Key = path.posix.join(s3KeyBase, file.relativePath.replace(/\\/g, "/"));    const metadata = getS3Metadata(file.relativePath);
+    let uploaded = false;
 
-    try {
-      logger.debug(`Uploading file: ${s3Key}`);
-
-      const fileStream = fs.createReadStream(file.fullPath);
-
+    for (let attempt = 1; attempt <= MAX_RETRIES && !uploaded; attempt++) {
       let lastLoadedForThisFile = 0;
 
-      const upload = new Upload({
-        client: s3,
-        params: {
-          Bucket: BUCKET_NAME,
-          Key: s3Key,
-          Body: fileStream,
-          ContentType: metadata.ContentType,
-          ContentEncoding: metadata.ContentEncoding,
-        },
-        queueSize: 4, // concurrency for multipart parts
-        partSize: 5 * 1024 * 1024, // 5 MB minimum multipart part size
-        leavePartsOnError: false,
-      });
+      try {
+        logger.info(
+          `Uploading file: ${file.s3Key} | size=${file.size} | attempt=${attempt}/${MAX_RETRIES}`,
+        );
 
-      upload.on("httpUploadProgress", (progress) => {
-        const loaded = progress.loaded ?? 0;
-        const total = progress.total ?? file.size;
+        if (file.size < MULTIPART_THRESHOLD) {
+          const fileStream = fs.createReadStream(file.fullPath);
 
-        // Update overall progress only by delta since last event
-        const delta = loaded - lastLoadedForThisFile;
-        if (delta > 0) {
-          overallLoaded += delta;
-          lastLoadedForThisFile = loaded;
+          fileStream.on("error", (err) => {
+            logger.error(`Read stream error for ${file.fullPath}`, err);
+          });
+
+          emitProgress(file, 0, file.size);
+
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: file.s3Key,
+              Body: fileStream,
+              ContentLength: file.size,
+              ContentType: file.metadata.ContentType,
+              ContentEncoding: file.metadata.ContentEncoding,
+            }),
+          );
+
+          overallLoaded += file.size;
+          emitProgress(file, file.size, file.size);
+        } else {
+          const fileStream = fs.createReadStream(file.fullPath);
+
+          fileStream.on("error", (err) => {
+            logger.error(`Read stream error for ${file.fullPath}`, err);
+          });
+
+          const upload = new Upload({
+            client: s3,
+            params: {
+              Bucket: BUCKET_NAME,
+              Key: file.s3Key,
+              Body: fileStream,
+              ContentLength: file.size,
+              ContentType: file.metadata.ContentType,
+              ContentEncoding: file.metadata.ContentEncoding,
+            },
+            queueSize: 1,
+            partSize: MULTIPART_PART_SIZE,
+            leavePartsOnError: false,
+          });
+
+          upload.on("httpUploadProgress", (progress) => {
+            const loaded = progress.loaded ?? 0;
+            const total = progress.total ?? file.size;
+
+            const delta = loaded - lastLoadedForThisFile;
+            if (delta > 0) {
+              overallLoaded += delta;
+              lastLoadedForThisFile = loaded;
+            }
+
+            emitProgress(file, loaded, total);
+          });
+
+          await upload.done();
+
+          if (lastLoadedForThisFile < file.size) {
+            overallLoaded += file.size - lastLoadedForThisFile;
+          }
+
+          emitProgress(file, file.size, file.size);
         }
 
-        onProgress?.({
-          currentFile: file.relativePath,
-          currentFileLoaded: loaded,
-          currentFileTotal: total,
-          currentFilePercent: total > 0 ? Math.round((loaded / total) * 100) : 0,
-          overallLoaded,
-          overallTotal,
-          overallPercent: overallTotal > 0 ? Math.round((overallLoaded / overallTotal) * 100) : 0,
-        });
-      });
+        logger.info(`Uploaded file successfully: ${file.s3Key}`);
+        uploaded = true;
+      } catch (error) {
+        logger.error(
+          `Failed to upload ${file.s3Key} on attempt ${attempt}/${MAX_RETRIES}:`,
+          error,
+        );
 
-      await upload.done();
+        const canRetry = attempt < MAX_RETRIES && isRetriableUploadError(error);
 
-      // Safety: ensure fully counted even if final progress event was missed
-      if (lastLoadedForThisFile < file.size) {
-        overallLoaded += file.size - lastLoadedForThisFile;
+        if (!canRetry) {
+          throw error;
+        }
+
+        logger.warn(`Retrying upload for ${file.s3Key} after transient failure...`);
+        await sleep(500 * attempt);
       }
-
-      onProgress?.({
-        currentFile: file.relativePath,
-        currentFileLoaded: file.size,
-        currentFileTotal: file.size,
-        currentFilePercent: 100,
-        overallLoaded,
-        overallTotal,
-        overallPercent: overallTotal > 0 ? Math.round((overallLoaded / overallTotal) * 100) : 100,
-      });
-
-      logger.info(`Uploaded file successfully: ${s3Key}`);
-    } catch (e) {
-      logger.error(`Failed to upload ${s3Key}:`, e);
-      throw e;
     }
   }
 
@@ -238,8 +311,8 @@ function getS3Metadata(fileName: string) {
     contentType = "image/svg+xml";
   } else if (baseName.endsWith(".ico")) {
     contentType = "image/x-icon";
-  } else if (baseName.endsWith(".txt")) {
-    contentType = "text/plain; charset=utf-8";
+  } else if (baseName.endsWith(".unityweb")) {
+    contentType = "application/octet-stream";
   }
 
   return {

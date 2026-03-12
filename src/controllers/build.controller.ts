@@ -1,19 +1,39 @@
 import { NextFunction, Request, Response } from "express"
 import { logger } from "../utils/logger";
 import fs from "fs"
-import path from "path"
-import { uploadFolderToS3, deleteS3Prefix, uploadFolderToS3WithProgress } from "../services/s3Upload.service"
+import path from "path"   
+import {  deleteS3Prefix, uploadFolderToS3WithProgress } from "../services/s3Upload.service"  
 import prisma from "../lib/prisma"
 import { invalidateCloudFront } from "../services/cloudfront.service";
 import { getBaseCDNURL } from "../utils/conditionalRules";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { sendSseEvent } from "../services/progressStore.service";
 
 function getAuthUserId(req: any): number | null {
   const id = req?.user?.id ?? null;
   return typeof id === "number" ? id : null;
 }
+
+function resolveUnityBuildRoot(extractDir: string) {
+  const indexAtRoot = path.join(extractDir, "index.html");
+  if (fs.existsSync(indexAtRoot)) return extractDir;
+
+  const entries = fs.readdirSync(extractDir, { withFileTypes: true });
+  const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+
+  if (dirs.length === 1) {
+    const candidate = path.join(extractDir, dirs[0]);
+    const candidateIndex = path.join(candidate, "index.html");
+    if (fs.existsSync(candidateIndex)) return candidate;
+  }
+
+  return extractDir; // validation will throw if incorrect
+}
+
+
 export async function uploadBuild(req: Request, res: Response, next: NextFunction) {
+  const {uploadId} = req.body;
   try {
     const { projectId, environmentId, versionId } = req.body;
 
@@ -25,7 +45,10 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
     const file = req.file
 
     if (!projectIdNum || !environmentIdNum || !versionIdNum) {
-      return next(new Error("Project or Environment or version is missing"));
+      return res.status(400).json({ message: "Project or Environment or version is missing" });
+    }
+    if (!uploadId) {
+      return res.status(400).json({ message: "uploadId is required" });
     }
     const project = await prisma.project.findUnique({
       where: { id: projectIdNum },
@@ -44,9 +67,13 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
     }
 
     if (!file) {
-      return next(new Error("ZIP file is required"));
+      return res.status(400).json({ message: "ZIP file is required" });
     }
 
+    sendSseEvent(uploadId, {
+      type: "status",
+      message: "Validating Unity WebGL build",
+    });
     const zipPath = file.path;
     const zipBaseName = path.basename(zipPath, ".zip");
 
@@ -63,21 +90,35 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
     logger.info(`Build extracted to ${extractDir}`);
     logFolderTree(extractDir, "AFTER_UNZIP");
 
-    validateUnityWebglBuild(extractDir);
-    // await fs.
-    //   createReadStream(zipPath)
-    //   .pipe(unzipper.Extract({ path: extractDir }))
-    //   .promise()
-    // validateUnityWebglBuild(extractDir)
-    logger.info(`Build extracted to ${extractDir}`);
+    const buildRoot = resolveUnityBuildRoot(extractDir);
+    logger.info(`Resolved Unity build root: ${buildRoot}`);
+    logFolderTree(buildRoot, "BUILD_ROOT");
 
+    validateUnityWebglBuild(buildRoot);
+    
+    logger.info(`Build extracted to ${extractDir}`);
+    sendSseEvent(uploadId, {
+      type: "status",
+      message: "Build extracted & validated successfully",
+    });
     const s3KeyBase = `${project.slug}/${environment.slug}/${version.name}`;
     logger.info(`Uploading to S3: ${s3KeyBase}`);
+    sendSseEvent(uploadId, {
+      type: "status",
+      message: "Started Uploading to S3",
+    });
     //await uploadFolderToS3(extractDir, s3KeyBase)
-    await uploadFolderToS3WithProgress(extractDir, s3KeyBase, (progress) => {
+    await uploadFolderToS3WithProgress(buildRoot, s3KeyBase, (progress) => {
       logger.info(
         `[${progress.overallPercent}%] Uploading ${progress.currentFile} (${progress.currentFilePercent}%)`,
       );
+      sendSseEvent(uploadId, {
+        type: "progress",
+        currentFile: progress.currentFile,
+        currentFilePercent: progress.currentFilePercent,
+        overallPercent: progress.overallPercent,
+        message: `Uploading ${progress.currentFile}`,
+      });
     });
     logger.info(`Upload to S3 completed: ${s3KeyBase}`);
     cleanUpTempFiles(zipPath, extractDir);
@@ -109,15 +150,19 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
         },
       });
     }
-    if (version.s3Path != "" && version.s3Path != null) {
+    if (versionBeingUploaded.s3Path != "" && versionBeingUploaded.s3Path != null) {
       await invalidateCloudFront([
-        `/${project.slug}/${environment.slug}/${version.name}/*`,
+        `/${project.slug}/${environment.slug}/${versionBeingUploaded.name}/*`,
       ]);
       logger.info(`CloudFront invalidated for ${s3KeyBase}`);
     }
 
 
-
+    sendSseEvent(uploadId, {
+      type: "completed",
+      message: "Build uploaded successfully",
+      overallPercent: 100,
+    });
     return res.status(200).json({
       success: true,
       publicUrl: getBaseCDNURL(req.headers.origin || req.headers.host) + s3KeyBase + "/index.html",
@@ -126,6 +171,10 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
       isThisVersionDefault: isFirstVersion || versionBeingUploaded?.isActive,
     });
   } catch (error: any) {
+    sendSseEvent(uploadId, {
+      type: "error",
+      message: error.message || "Upload failed",
+    });
     logger.error("Error uploading build", error);
     return res.status(500).json({
       success: false,

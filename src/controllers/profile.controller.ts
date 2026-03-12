@@ -40,11 +40,11 @@ export async function updateProfile(req: AuthedRequest, res: Response) {
     const { name } = req.body;
 
     if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: "User not found" });
     }
 
     if (!name || typeof name !== "string") {
-        return res.status(400).json({ message: "Name is required" });
+        return res.status(400).json({ message: "Name is required to update" });
     }
 
     const normalizedName = name.trim();

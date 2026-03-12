@@ -31,7 +31,12 @@ export async function addAllowedDomain(req: Request, res: Response) {
     if (!isValidDomain(domain)) {
         return res.status(400).json({ message: "Invalid domain" });
     }
-
+    const existing = await prisma.allowedEmailDomain.findUnique({
+        where: { domain },
+    });
+    if (existing) {
+        return res.status(400).json({ message: "Domain already exists" });
+    }
     const created = await prisma.allowedEmailDomain.create({
         data: { domain },
     });
@@ -42,8 +47,12 @@ export async function addAllowedDomain(req: Request, res: Response) {
 export async function deleteAllowedDomain(req: Request, res: Response) {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid id" });
+    console.log("delete all query", req.query)
+    console.log("users", req.query.deleteUsers)
+    console.log("invites", req.query.deleteInvites)
 
     const deleteUsers = String(req.query.deleteUsers || "false") === "true";
+    console.log("deleteusers", deleteUsers)
 
     const domainRow = await prisma.allowedEmailDomain.findUnique({ where: { id } });
     if (!domainRow) return res.status(404).json({ message: "Domain not found" });
@@ -56,7 +65,7 @@ export async function deleteAllowedDomain(req: Request, res: Response) {
             const users = await tx.user.findMany({
                 where: {
                     email: { endsWith: `@${domain}` },
-                    role: { not: Role.ADMIN },
+                    role:  Role.VIEWER,
                 },
                 select: { id: true },
             });
@@ -99,7 +108,7 @@ export async function domainDeleteSummary(req: Request, res: Response) {
 
     const domain = domainRow.domain;
     const userCount = await prisma.user.count({
-        where: { email: { endsWith: `@${domain}` }, role: { not: Role.ADMIN } },
+        where: { email: { endsWith: `@${domain}` }, role: Role.VIEWER },
     });
 
     const inviteCount = await prisma.userInvite.count({

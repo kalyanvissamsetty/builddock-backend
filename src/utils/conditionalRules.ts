@@ -3,7 +3,7 @@ export function getBaseFrontEndURL(origin?: string){
     if(origin?.includes("timsstudio")){
         return "https://timsstudio.tech"
     }
-    return "http://localhost:3000"
+    return "https://timsstudio.tech"
 }
 
 export function getBaseOriginDomain(origin?: string){

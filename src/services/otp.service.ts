@@ -1,7 +1,7 @@
 import prisma from "../lib/prisma";
 import {  sendOtpEmail } from "./resend.email.service"
 import { generateOTP } from "../utils/otp";
-type OtpPurpose = "VERIFY_EMAIL" | "LOGIN" | "INVITE";
+type OtpPurpose = "INVITED_NO_PASSWORD"| "VERIFY_EMAIL" | "LOGIN" | "INVITE";
 
 type OtpEmailContext = {
   purpose?: OtpPurpose;

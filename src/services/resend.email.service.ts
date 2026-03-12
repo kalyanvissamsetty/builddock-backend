@@ -2,11 +2,10 @@ import { Client } from '@microsoft/microsoft-graph-client';
 import { Resend } from 'resend';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
 import { ClientSecretCredential } from '@azure/identity';
-import { error } from 'node:console';
 
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 type SendOtpCtx = {
-  purpose: "VERIFY_EMAIL" | "LOGIN" | "INVITE";
+  purpose: "VERIFY_EMAIL" | "LOGIN" | "INVITE" | "INVITED_NO_PASSWORD";
   appName?: string;
   loginOtpLink?: string; // optional, good for LOGIN/INVITE
   roleLabel?: string; // for INVITE
@@ -131,7 +130,7 @@ export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
     });
   }
 
-  if (ctx.purpose === "LOGIN") {
+  if (ctx.purpose === "LOGIN" || ctx.purpose === "INVITED_NO_PASSWORD") {
     subject = `Your ${appName} login code`;
     html = renderBaseTemplate({
       title: "Sign in to your account",
@@ -161,7 +160,7 @@ export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
     });
   }
   if (appName.toLowerCase().includes("mosaic")) {
-console.log("in mosaic if mail")
+    
     return await sendMosaicMail({
       to,
       subject,
@@ -173,6 +172,7 @@ console.log("in mosaic if mail")
     subject,
     html
   });
+  
 }
 
 type SendEmailParams = {

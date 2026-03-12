@@ -3,6 +3,7 @@ import { deleteBuild, listAllBuilds, uploadBuild } from "../controllers/build.co
 import { upload } from "../middlewares/upload.middleware"
 import { requireAuth, requireRole } from "../middlewares/authJwt";
 import { Role } from "../generated/prisma/client"
+import { subscribeUploadProgress } from "../services/progressStore.service";
 
 const router = Router()
 
@@ -15,4 +16,7 @@ router.get(
     requireRole([Role.ADMIN, Role.DEV, Role.MANAGER]),
     listAllBuilds,
 );
+
+//api/builds/upload/progress/:uploadId
+router.get("/upload/progress/:uploadId", subscribeUploadProgress);
 export default router

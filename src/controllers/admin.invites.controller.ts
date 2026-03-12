@@ -96,7 +96,7 @@ export async function createInvite(req: Request, res: Response) {
 
 
     // Send OTP now (invite email template should point to /login-otp?email=...)
-    const appUrl = getBaseFrontEndURL(req.headers.origin);
+    const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=invite`;
     user = await prisma.user.create({
         data: {
@@ -111,7 +111,7 @@ export async function createInvite(req: Request, res: Response) {
         purpose: "INVITE",
         loginOtpLink,
         roleLabel: role, // VIEWER/DEV/MANAGER
-        appName: getAppName(req.headers.origin),
+        appName: getAppName(req.headers.origin || req.headers.host),
     });
     console.log("email response: "+emailResponse)
     if(!emailResponse){
@@ -164,14 +164,22 @@ export async function resendInviteOtp(req: Request, res: Response) {
     const user = await prisma.user.findUnique({ where: { email: invite.email } });
     if (!user) return res.status(404).json({ message: "User not found for invite" });
 
-    const appUrl = getBaseFrontEndURL(req.headers.origin);
+    const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=invite`;
 
-    await generateAndSendOtp(user.id, user.email, {
+    const emailResponse: Boolean = await generateAndSendOtp(user.id, user.email, {
         purpose: "INVITE",
         loginOtpLink,
-        roleLabel: "DEV",
-        appName: getAppName(req.headers.origin),
+        roleLabel: user.role,
+        appName: getAppName(req.headers.origin || req.headers.host),
     });
+
+    console.log("email response: " + emailResponse)
+    if (!emailResponse) {
+
+        return res.status(400).json({
+            message: "Failed to send Invite email to user",
+        });
+    }
     res.status(204).send();
 }

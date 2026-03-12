@@ -122,7 +122,7 @@ export async function resendOtp(req: Request, res: Response) {
     where: { email },
   });
 
-  if (!user || user.isEmailVerified) {
+  if (!user) {
     return res.status(400).json({ message: "Invalid request" });
   }
 
@@ -135,13 +135,13 @@ export async function resendOtp(req: Request, res: Response) {
   }
 
   // Send email again here
-  const appUrl = getBaseFrontEndURL(req.headers.origin);
+  const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
   const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=otp-login`;
 
   await generateAndSendOtp(user.id, user.email, {
     purpose: "LOGIN",
     loginOtpLink,
-    appName: getAppName(req.headers.origin),
+    appName: getAppName(req.headers.origin || req.headers.host),
   });
 
   return res.json({ message: "OTP sent successfully" });
@@ -167,10 +167,9 @@ export async function requestOtp(req: Request, res: Response) {
 
   const allowed = await prisma.allowedEmailDomain.findUnique({ where: { domain } });
   if (!allowed) {
-    return res.status(403).json({ message: "Email domain not allowed" });
+    return res.status(403).json({ message: "Email domain not allowed to send OTP" });
   }
 
-  // IMPORTANT: Do not create user here
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
@@ -181,12 +180,12 @@ export async function requestOtp(req: Request, res: Response) {
     });
   }
 
-  const appUrl = getBaseFrontEndURL(req.headers.origin);
+  const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
   const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=otp-login`;
 
   await generateAndSendOtp(user.id, user.email, {
     purpose: "LOGIN",
-    appName: getAppName(req.headers.origin),
+    appName: getAppName(req.headers.origin || req.headers.host),
     loginOtpLink,
   });
 

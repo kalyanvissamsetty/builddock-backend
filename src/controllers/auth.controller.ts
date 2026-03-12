@@ -44,8 +44,8 @@ export async function signup(req: Request, res: Response) {
   const existing = await prisma.user.findUnique({
     where: { email },
   });
-  // Case 1: user exists but NOT verified -> resend OTP and return
-  if (existing && !existing.isEmailVerified) {
+  //user exists & has password but NOT verified -> resend OTP and return
+  if (existing && !existing.isEmailVerified && existing.passwordHash) {
     // Optional: update name/password if you want, or keep as is
     const passwordHash = await hashPassword(password);
 
@@ -57,7 +57,7 @@ export async function signup(req: Request, res: Response) {
       },
     });
 
-    const appUrl = getBaseFrontEndURL(req.headers.origin);
+    const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(normalizedEmail)}&reason=not-verified`;
 
     await generateAndSendOtp(existing.id, normalizedEmail, {
@@ -71,7 +71,28 @@ export async function signup(req: Request, res: Response) {
       redirectTo: `/verifyotp?email=${encodeURIComponent(normalizedEmail)}&reason=not-verified`,
     });
   }
-  if (existing && existing.isEmailVerified) {
+  if (existing && existing.isEmailVerified && !existing.passwordHash) {
+    const invite = await prisma.userInvite.findFirst({
+      where: {
+        email: existing.email,
+      },
+    })
+    if (invite) {
+      const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
+      const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(existing.email)}&reason=invited-no-password`;
+
+      await generateAndSendOtp(existing.id, existing.email, {
+        purpose: "INVITED_NO_PASSWORD",
+        loginOtpLink: verifyLink,
+        appName: getAppName(req.headers.origin || req.headers.host),
+      });
+
+      return res.status(403).json({
+        message: "You are Invited to join, Please Verify your Email",
+        code: "EMAIL_NOT_VERIFIED",
+        redirectTo: `/verifyotp?email=${encodeURIComponent(existing.email)}&reason=invited-no-password`,
+      });
+    }
     return res.status(409).json({
       message: "User already exists",
     });
@@ -93,7 +114,7 @@ export async function signup(req: Request, res: Response) {
 
   logger.info(`User created: ${user.id}`);
 
-  await generateAndSendOtp(user.id, user.email, { purpose: "VERIFY_EMAIL", appName: getAppName(req.headers.origin) });
+  await generateAndSendOtp(user.id, user.email, { purpose: "VERIFY_EMAIL", appName: getAppName(req.headers.origin || req.headers.host) });
 
 
   return res.status(201).json({
@@ -119,10 +140,43 @@ export async function login(req: Request, res: Response) {
     where: { email },
   });
 
-  if (!user || !user.passwordHash) {
+  if (!user) {
     return res
       .status(401)
-      .json({ code: "INVALID_CREDENTIALS", message: "Invalid credentials" });
+      .json({ code: "INVALID_CREDENTIALS", message: "User Not Found" });
+  }
+  //this is invited user case (password won't present but email is verified)
+  if (!user.passwordHash && user.isEmailVerified) {
+    const invite = await prisma.userInvite.findFirst({
+      where: {
+        email: user.email,
+      },
+    })
+    if(invite){
+      const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
+      const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=invited-no-password`;
+
+      await generateAndSendOtp(user.id, user.email, {
+        purpose: "INVITED_NO_PASSWORD",
+        loginOtpLink: verifyLink,
+        appName: getAppName(req.headers.origin || req.headers.host),
+      });
+
+      return res.status(403).json({
+        message: "You are Invited to join, Please Verify your Email",
+        code: "EMAIL_NOT_VERIFIED",
+        redirectTo: `/verifyotp?email=${encodeURIComponent(user.email)}&reason=invited-no-password`,
+      });
+    }
+    return res
+      .status(401)
+      .json({ code: "INVALID_CREDENTIALS", message: "User Not Found" });
+  }
+
+  if(!user.passwordHash){
+    return res
+      .status(401)
+      .json({ code: "INVALID_CREDENTIALS", message: "User Not Found" });
   }
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
@@ -131,13 +185,13 @@ export async function login(req: Request, res: Response) {
       .json({ code: "INVALID_CREDENTIALS", message: "Invalid credentials" });
   }
   if (!user.isEmailVerified) {
-    const appUrl = getBaseFrontEndURL(req.headers.origin);
+    const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=not-verified`;
 
     await generateAndSendOtp(user.id, user.email, {
       purpose: "VERIFY_EMAIL",
       loginOtpLink: verifyLink,
-      appName: getAppName(req.headers.origin),
+      appName: getAppName(req.headers.origin || req.headers.host),
     });
 
     return res.status(403).json({
