@@ -60,10 +60,10 @@ export async function signup(req: Request, res: Response) {
     const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(normalizedEmail)}&reason=not-verified`;
 
-    await generateAndSendOtp(existing.id, normalizedEmail, {
-      purpose: "VERIFY_EMAIL",
-      loginOtpLink: verifyLink,
-    });
+    // await generateAndSendOtp(normalizedEmail, {
+    //   purpose: "VERIFY_EMAIL",
+    //   loginOtpLink: verifyLink,
+    // });
 
     return res.status(409).json({
       message: "Account exists but email is not verified. OTP sent again.",
@@ -81,11 +81,11 @@ export async function signup(req: Request, res: Response) {
       const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
       const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(existing.email)}&reason=invited-no-password`;
 
-      await generateAndSendOtp(existing.id, existing.email, {
-        purpose: "INVITED_NO_PASSWORD",
-        loginOtpLink: verifyLink,
-        appName: getAppName(req.headers.origin || req.headers.host),
-      });
+      // await generateAndSendOtp(existing.id, existing.email, {
+      //   purpose: "INVITED_NO_PASSWORD",
+      //   loginOtpLink: verifyLink,
+      //   appName: getAppName(req.headers.origin || req.headers.host),
+      // });
 
       return res.status(403).json({
         message: "You are Invited to join, Please Verify your Email",
@@ -114,7 +114,7 @@ export async function signup(req: Request, res: Response) {
 
   logger.info(`User created: ${user.id}`);
 
-  await generateAndSendOtp(user.id, user.email, { purpose: "VERIFY_EMAIL", appName: getAppName(req.headers.origin || req.headers.host) });
+  // await generateAndSendOtp(user.id, user.email, { purpose: "VERIFY_EMAIL", appName: getAppName(req.headers.origin || req.headers.host) });
 
 
   return res.status(201).json({
@@ -156,11 +156,11 @@ export async function login(req: Request, res: Response) {
       const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
       const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=invited-no-password`;
 
-      await generateAndSendOtp(user.id, user.email, {
-        purpose: "INVITED_NO_PASSWORD",
-        loginOtpLink: verifyLink,
-        appName: getAppName(req.headers.origin || req.headers.host),
-      });
+      // await generateAndSendOtp(user.id, user.email, {
+      //   purpose: "INVITED_NO_PASSWORD",
+      //   loginOtpLink: verifyLink,
+      //   appName: getAppName(req.headers.origin || req.headers.host),
+      // });
 
       return res.status(403).json({
         message: "You are Invited to join, Please Verify your Email",
@@ -188,11 +188,11 @@ export async function login(req: Request, res: Response) {
     const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
     const verifyLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=not-verified`;
 
-    await generateAndSendOtp(user.id, user.email, {
-      purpose: "VERIFY_EMAIL",
-      loginOtpLink: verifyLink,
-      appName: getAppName(req.headers.origin || req.headers.host),
-    });
+    // await generateAndSendOtp(user.id, user.email, {
+    //   purpose: "VERIFY_EMAIL",
+    //   loginOtpLink: verifyLink,
+    //   appName: getAppName(req.headers.origin || req.headers.host),
+    // });
 
     return res.status(403).json({
       message: "Email not verified. OTP sent again.",

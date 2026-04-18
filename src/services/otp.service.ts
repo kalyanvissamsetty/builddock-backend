@@ -1,25 +1,103 @@
 import prisma from "../lib/prisma";
-import {  sendOtpEmail } from "./resend.email.service"
+import { constructAndSendMail } from "./resend.email.service"
 import { generateOTP } from "../utils/otp";
-type OtpPurpose = "INVITED_NO_PASSWORD"| "VERIFY_EMAIL" | "LOGIN" | "INVITE";
+import { Role } from "../generated/prisma/enums";
+export type OtpPurpose = "LOGIN" | "INVITE";
 
-type OtpEmailContext = {
+export type OtpEmailContext = {
   purpose?: OtpPurpose;
-  appName?: string;
+  projectName?: string;
   loginOtpLink?: string; // used for invite/login convenience
-  roleLabel?: string;    // used for invite
+  roleLabel?: Role;    // used for invite
 };
 
+
+export async function generateOtpAndUpdateUser(email: string, role:Role, createdById: number) {
+  const otp = generateOTP();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) 
+  {
+    //as user not present create user
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          isEmailVerified: true,
+          role,
+          name: email.split("@")[0],
+          otpCode: otp,
+          otpExpiresAt: expiresAt,
+          otpAttempts: 0,
+          otpLockedUntil: null,
+        },
+      });
+      //first time - so create invite
+    const invite = await prisma.userInvite.create({
+      data: {
+        email,
+        role,
+        domain: email.split("@")[1],
+        status: "PENDING",
+        expiresAt,
+        createdById,
+      } as any,
+    });
+  } 
+  else 
+  {
+      await prisma.user.update({
+        where: { email },
+        data: {
+          isEmailVerified: true,
+          otpCode: otp,
+          otpExpiresAt: expiresAt,
+          otpAttempts: 0,
+          otpLockedUntil: null,
+        },
+      });
+
+    const existingInvite = await prisma.userInvite.findUnique(
+      { where: { email } }
+    );
+
+      if (existingInvite) {
+        await prisma.userInvite.update({
+          where: {
+            email,
+          },
+          data: {
+            expiresAt,
+            status: "PENDING",
+            createdById,
+          },
+        });
+      }
+      else{
+        const invite = await prisma.userInvite.create({
+          data: {
+            email,
+            role,
+            domain: email.split("@")[1],
+            status: "PENDING",
+            expiresAt,
+            createdById,
+          } as any,
+        });
+      }
+  }
+
+  return otp
+}
 export async function generateAndSendOtp(
-  userId: number,
   email: string,
   ctx: OtpEmailContext = {},
-):Promise<Boolean> {
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+): Promise<Boolean> {
 
+  const otp = generateOTP();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
   await prisma.user.update({
-    where: { id: userId },
+    where: { email },
     data: {
       otpCode: otp,
       otpExpiresAt: expiresAt,
@@ -27,10 +105,10 @@ export async function generateAndSendOtp(
       otpLockedUntil: null,
     },
   });
-
-  return await sendOtpEmail(email, otp, {
-    purpose: ctx.purpose ?? "VERIFY_EMAIL", // default keeps old behavior
-    appName: ctx.appName ?? "Mosaic WebGL Viewer",
+  
+  return await constructAndSendMail(email, otp, {
+    purpose: ctx.purpose ?? "LOGIN",
+    projectName: ctx.projectName ?? "PG&E Advanced Substation",
     loginOtpLink: ctx.loginOtpLink,
     roleLabel: ctx.roleLabel,
   });

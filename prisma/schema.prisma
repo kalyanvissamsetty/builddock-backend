@@ -117,7 +117,7 @@ model RefreshToken {
 
 model UserInvite {
   id          Int      @id @default(autoincrement())
-  email       String
+  email       String  @unique
   name        String?
   domain      String
   status      InviteStatus @default(PENDING)

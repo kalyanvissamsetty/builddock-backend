@@ -11,7 +11,7 @@ const storage = multer.diskStorage({
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB
+    fileSize: 1024 * 1024 * 1024, // 1GB
   },
   fileFilter: (_, file, cb) => {
     if (path.extname(file.originalname) !== ".zip") {

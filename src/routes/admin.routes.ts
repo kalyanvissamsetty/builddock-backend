@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from "../middlewares/authJwt";
 import {
     listInvites,
     createInvite,
-    resendInviteOtp,
+    bulkInviteUsers,
 } from "../controllers/admin.invites.controller";
 import { listAllowedDomains, addAllowedDomain, deleteAllowedDomain, domainDeleteSummary } from "../controllers/admin.domains.controller";
 import { Role } from "../generated/prisma/enums";
@@ -21,6 +21,6 @@ router.get("/allowed-domains/:id/summary", domainDeleteSummary);
 // invites
 router.get("/invites", listInvites);
 router.post("/invites", createInvite);
-router.post("/invites/:id/resend", resendInviteOtp);
-
+//router.post("/invites/:id/resend", resendInviteOtp);
+router.post("/invites/bulk", bulkInviteUsers);
 export default router;

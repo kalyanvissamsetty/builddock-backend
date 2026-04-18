@@ -1,9 +1,7 @@
+import { Role } from "../generated/prisma/enums";
+
 export function getBaseFrontEndURL(origin?: string){
-    if (origin?.includes("themosaiccompany"))  return "https://preview.themosaiccompany.com";
-    if(origin?.includes("timsstudio")){
-        return "https://timsstudio.tech"
-    }
-    return "https://timsstudio.tech"
+    return "https://preview.themosaiccompany.com";
 }
 
 export function getBaseOriginDomain(origin?: string){
@@ -22,9 +20,16 @@ export function getBaseCDNURL(origin?: string) {
 }
 
 export function getAppName(origin?: string){
-    if (origin?.includes("themosaiccompany")) return "Mosaic WebGL Viewer";
+    if (origin?.includes("themosaiccompany")) return "PG&E Advanced Substation";
     if (origin?.includes("timsstudio")) {
         return "TIMS Studio"
     }
-    return "Mosaic WebGL Viewer"
+    return "PG&E Advanced Substation"
+}
+
+export function getAppropriateRole(role: Role){
+    if (role === "ADMIN") return "Admin"
+    if (role === "VIEWER") return "Viewer"
+    if(role === "MANAGER") return "Manager"
+    return "Viewer"
 }

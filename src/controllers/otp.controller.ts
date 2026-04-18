@@ -66,25 +66,24 @@ export async function verifyOtp(req: Request, res: Response) {
   });
 
   // If there is a pending invite, accept it and apply role (ADMIN blocked already at invite time)
+
+  console.log("finding invite")
   const invite = await prisma.userInvite.findFirst({
     where: {
       email: normalizedEmail,
-      status: "PENDING",
-      expiresAt: { gt: new Date() },
+      status: {
+        in: ["PENDING", "EXPIRED"],
+      },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  console.log("invite", invite)
 
   if (invite) {
     await prisma.userInvite.update({
       where: { id: invite.id },
       data: { status: "ACCEPTED", acceptedAt: new Date() },
-    });
-
-    // Apply invited role
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { role: invite.role },
     });
   }
 
@@ -138,10 +137,10 @@ export async function resendOtp(req: Request, res: Response) {
   const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
   const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=otp-login`;
 
-  await generateAndSendOtp(user.id, user.email, {
+  await generateAndSendOtp(user.email, {
     purpose: "LOGIN",
     loginOtpLink,
-    appName: getAppName(req.headers.origin || req.headers.host),
+    projectName: getAppName(req.headers.origin || req.headers.host),
   });
 
   return res.json({ message: "OTP sent successfully" });
@@ -183,9 +182,9 @@ export async function requestOtp(req: Request, res: Response) {
   const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
   const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=otp-login`;
 
-  await generateAndSendOtp(user.id, user.email, {
+  await generateAndSendOtp(user.email, {
     purpose: "LOGIN",
-    appName: getAppName(req.headers.origin || req.headers.host),
+    projectName: getAppName(req.headers.origin || req.headers.host),
     loginOtpLink,
   });
 

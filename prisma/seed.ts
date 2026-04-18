@@ -31,7 +31,7 @@ async function main() {
 }
 async function seedEmailDomains() {
   const domains = [
-    "gmail.com",
+    "tims.group",
     // Add more domains here later
     // "example.com",
   ];
@@ -81,7 +81,7 @@ export async function seed() {
   console.log("Database cleanup completed");
 }
 
-main()
+seedEmailDomains()
   .catch((error) => {
     console.error("Seed failed:", error);
     process.exit(1);

@@ -3,6 +3,7 @@ import prisma from "../lib/prisma";
 import { generateAndSendOtp } from "../services/otp.service"; // use your existing function
 import { getAppName, getBaseFrontEndURL } from "../utils/conditionalRules";
 import { Role } from "../generated/prisma/enums";
+import { sendBulkInvites } from "../services/resend.email.service";
 
 function normalizeEmail(email: string) {
     return String(email || "").trim().toLowerCase();
@@ -40,10 +41,117 @@ export async function listInvites(req: Request, res: Response) {
     res.json(updated);
 }
 
-// POST /api/admin/invites
-// body: { email, name? }
-const ALLOWED_INVITE_ROLES:Role[] = ["VIEWER", "DEV","MANAGER"] as const;
+const ALLOWED_INVITE_ROLES: Role[] = ["VIEWER", "DEV", "MANAGER"] as const;
 
+function isValidEmail(e: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+export async function bulkInviteUsers(req: Request, res: Response) {
+    const role:Role = (req.body?.role || "VIEWER") as Role;
+    const emailsArr = Array.isArray(req.body?.emails) ? req.body.emails : null;
+
+    const {versionId} = req.body;
+    if(!versionId) return res.status(400).json({ message: "Version ID is required" });
+    let emails: string[] = [];
+
+    if (emailsArr) {
+        emails = emailsArr.map((x: any) => String(x));
+    }
+
+    emails = emails.map(normalizeEmail);
+
+    // Dedupe
+    emails = Array.from(new Set(emails));
+
+    // Validate count
+    if (emails.length === 0) {
+        return res.status(400).json({ message: "No emails provided" });
+    }
+    if (emails.length > 30) {
+        return res.status(400).json({ message: "Max 30 emails at a time" });
+    }
+
+    // Validate role
+    if (!ALLOWED_INVITE_ROLES.includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+    }
+
+    // Validate emails
+    const invalidEmails = emails.filter((e) => !isValidEmail(e));
+    if (invalidEmails.length > 0) {
+        return res.status(400).json({
+            message: "Some emails are invalid",
+            invalidEmails,
+        });
+    }
+
+    // Enforce allowed domain
+    const domains = await prisma.allowedEmailDomain.findMany({ select: { domain: true } });
+    const allowedSet = new Set(domains.map((d) => d.domain.toLowerCase()));
+
+    const domainNotAllowed = emails.filter((e) => {
+        const d = e.split("@")[1]?.toLowerCase();
+        return !d || !allowedSet.has(d);
+    });
+
+    if (domainNotAllowed.length > 0) {
+        return res.status(403).json({
+            message: "Some emails are not in allowed domains",
+            emails: domainNotAllowed,
+        });
+    }
+
+    const createdById = (req as any).user.id;
+
+    // For report
+    const emailsToSend: string[] = [];
+
+    for (const email of emails) {
+        // If you want to avoid re-inviting accepted users:
+        const existingAcceptedInvite = await prisma.userInvite.findFirst({
+            where: {
+                email,
+                status: "ACCEPTED",
+            },
+            select: { id: true },
+        });
+
+        if (existingAcceptedInvite) {
+            continue;
+        }
+        emailsToSend.push(email);
+    }
+
+    const result = await sendBulkInvites(emailsToSend, {
+        purpose: "INVITE",
+        projectName: "PG&E Advanced Substation",
+        roleLabel: role as Role,
+    }, createdById)
+
+    const okEmails = result.results.filter((r) => r.ok).map((r) => r.email.toLowerCase());
+
+    okEmails.forEach(async (email)=>{
+        const userData = await prisma.user.findUnique({where:{email}})
+        if(userData){
+            try{
+            await prisma.viewerBuildAccess.create({
+                data:{
+                    userId:userData.id,
+                    versionId, 
+                    createdAt: new Date(),
+                }
+            })}catch(err : any){
+                console.log("err: ",err)
+            }
+        }
+    })
+    console.log("emails result: ",result);
+
+    return res.json({
+        result
+    });
+}
 export async function createInvite(req: Request, res: Response) {
     const email = normalizeEmail(req.body?.email);
     const name = req.body?.name ? String(req.body.name).trim() : null;
@@ -78,7 +186,7 @@ export async function createInvite(req: Request, res: Response) {
 
     // Create or update user
     let user = await prisma.user.findUnique({ where: { email } });
-    if(user){
+    if (user) {
         return res.status(409).json({
             message: "User already exists. Use Promote Users to change role or re-send OTP login.",
         });
@@ -107,14 +215,14 @@ export async function createInvite(req: Request, res: Response) {
             passwordHash: null,
         },
     });
-    const emailResponse:Boolean = await generateAndSendOtp(user.id, user.email, {
+    const emailResponse: Boolean = await generateAndSendOtp(user.email, {
         purpose: "INVITE",
         loginOtpLink,
-        roleLabel: role, // VIEWER/DEV/MANAGER
-        appName: getAppName(req.headers.origin || req.headers.host),
+        roleLabel: role as Role,
+        projectName: getAppName(req.headers.origin || req.headers.host),
     });
-    console.log("email response: "+emailResponse)
-    if(!emailResponse){
+    console.log("email response: " + emailResponse)
+    if (!emailResponse) {
         await prisma.user.delete({
             where: { id: user.id },
         })
@@ -141,45 +249,3 @@ export async function createInvite(req: Request, res: Response) {
     });
 }
 
-// POST /api/admin/invites/:id/resend
-export async function resendInviteOtp(req: Request, res: Response) {
-    const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ message: "Invalid invite id" });
-
-    const invite = await prisma.userInvite.findUnique({ where: { id } });
-    if (!invite) return res.status(404).json({ message: "Invite not found" });
-
-    if (invite.status !== "PENDING") {
-        return res.status(400).json({ message: "Invite is not pending" });
-    }
-
-    if (invite.expiresAt < new Date()) {
-        await prisma.userInvite.update({
-            where: { id },
-            data: { status: "EXPIRED" },
-        });
-        return res.status(400).json({ message: "Invite expired" });
-    }
-
-    const user = await prisma.user.findUnique({ where: { email: invite.email } });
-    if (!user) return res.status(404).json({ message: "User not found for invite" });
-
-    const appUrl = getBaseFrontEndURL(req.headers.origin || req.headers.host);
-    const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(user.email)}&reason=invite`;
-
-    const emailResponse: Boolean = await generateAndSendOtp(user.id, user.email, {
-        purpose: "INVITE",
-        loginOtpLink,
-        roleLabel: user.role,
-        appName: getAppName(req.headers.origin || req.headers.host),
-    });
-
-    console.log("email response: " + emailResponse)
-    if (!emailResponse) {
-
-        return res.status(400).json({
-            message: "Failed to send Invite email to user",
-        });
-    }
-    res.status(204).send();
-}

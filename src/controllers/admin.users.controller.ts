@@ -20,61 +20,9 @@ export async function listUsers(req: Request, res: Response) {
     orderBy: { createdAt: "asc" },
   });
 
-  const invitedUsers = await prisma.userInvite.findMany({
-    where: {
-      role: { not: Role.ADMIN },
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const verifiedEmails = new Set(
-    verifiedUsers.map((user) => user.email.toLowerCase())
-  );
-
-  const uniqueInvitedUsers = invitedUsers.filter(
-    (invite) => !verifiedEmails.has(invite.email.toLowerCase())
-  );
-
-  res.json([...verifiedUsers, ...uniqueInvitedUsers]);
+  res.json(verifiedUsers);
 }
-export async function listUser(req: Request, res: Response) {
-  const verifiedUsers = await prisma.user.findMany({
-    where: {
-      isEmailVerified: true,
-      role: { not: Role.ADMIN }
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      isEmailVerified: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-  const invitedUsers = await prisma.userInvite.findMany({
-    where: {
-      role: { not: Role.ADMIN }
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-  res.json([...verifiedUsers, ...invitedUsers]);
-}
+
 export async function updateUserRole(req: Request, res: Response) {
   const userId = Number(req.params.id);
   const { role } = req.body;
@@ -109,4 +57,38 @@ export async function updateUserRole(req: Request, res: Response) {
   });
 
   res.json(updated);
+}
+
+export async function deleteUser(req: Request, res: Response){
+  const userId = Number(req.params.id);
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!targetUser) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  if (targetUser.role === Role.ADMIN) {
+    return res.status(400).json({
+      message: "Admin role cannot be deleted",
+    });
+  }
+
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  try{
+    const data = await prisma.userInvite.delete({
+      where: { email: targetUser.email },
+    });
+    console.log("Deleted ",data)
+  }
+  catch(error){
+    console.log(error);
+  }
+
+  res.json({ message: "User deleted successfully" }); 
 }

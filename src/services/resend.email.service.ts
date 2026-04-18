@@ -1,15 +1,11 @@
-import { Client } from '@microsoft/microsoft-graph-client';
 import { Resend } from 'resend';
-import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
-import { ClientSecretCredential } from '@azure/identity';
+import { getGraphClient, runWithConcurrency, withGraphRetry } from './outlookGraph';
+import { generateOtpAndUpdateUser, OtpEmailContext } from './otp.service';
+import { Role } from '../generated/prisma/enums';
+import { getAppropriateRole, getBaseFrontEndURL } from '../utils/conditionalRules';
 
 const resend = new Resend(process.env.RESEND_API_KEY as string);
-type SendOtpCtx = {
-  purpose: "VERIFY_EMAIL" | "LOGIN" | "INVITE" | "INVITED_NO_PASSWORD";
-  appName?: string;
-  loginOtpLink?: string; // optional, good for LOGIN/INVITE
-  roleLabel?: string; // for INVITE
-};
+
 
 function escapeHtml(input: string) {
   return input
@@ -22,7 +18,6 @@ function escapeHtml(input: string) {
 
 function renderBaseTemplate(params: {
   title: string;
-  subtitle?: string;
   otp: string;
   primaryActionLabel?: string;
   primaryActionUrl?: string;
@@ -30,9 +25,7 @@ function renderBaseTemplate(params: {
   appName: string;
 }) {
   const title = escapeHtml(params.title);
-  const subtitle = params.subtitle ? escapeHtml(params.subtitle) : "";
   const otp = escapeHtml(params.otp);
-  const appName = escapeHtml(params.appName);
 
   const primaryActionLabel = params.primaryActionLabel
     ? escapeHtml(params.primaryActionLabel)
@@ -78,10 +71,6 @@ function renderBaseTemplate(params: {
     <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
       <div style="padding: 18px 20px; border-bottom: 1px solid #e5e7eb;">
         <h2 style="margin: 0; font-size: 18px; color: #111827;">${title}</h2>
-        ${subtitle
-      ? `<p style="margin: 8px 0 0 0; color: #6b7280; font-size: 13px; line-height: 1.4;">${subtitle}</p>`
-      : ""
-    }
       </div>
 
       <div style="padding: 20px;">
@@ -106,35 +95,66 @@ function renderBaseTemplate(params: {
 
       <div style="padding: 14px 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px;">
         <p style="margin: 0;">Thanks,</p>
-        <p style="margin: 4px 0 0 0;">${appName} Team</p>
+        <p style="margin: 4px 0 0 0;">Mosaic Team</p>
       </div>
     </div>
   </div>
   `;
 }
+function getInviteEmailTemplate(ctx: OtpEmailContext, otp: string) {
+  const subject = `You have been invited to access ${ctx.projectName}`
+  const roleLine = ctx.roleLabel ? `Role: ${getAppropriateRole(ctx.roleLabel)}` : undefined;
 
-export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
-  const appName = ctx.appName ?? "Mosaic WebGL Viewer";
+  const html = renderBaseTemplate({
+    title: `You have been invited to access ${ctx.projectName}`,
+    otp,
+    primaryActionLabel: ctx.loginOtpLink ? "Accept invite and sign in" : undefined,
+    primaryActionUrl: ctx.loginOtpLink,
+    extraLines: [
+      roleLine ? roleLine : "",
+      "Use the OTP below to sign in.",
+    ].filter(Boolean),
+    appName: ctx.projectName ? ctx.projectName : "PG&E Advanced Substation",
+  });
+
+  return { subject, html }
+}
+
+export async function sendBulkInvites(emails: string[], ctx: OtpEmailContext, createdById: number) {
+  const results = await runWithConcurrency(emails, 3, async (email) => {
+    //generate invite link
+    const appUrl = getBaseFrontEndURL("mosaic");
+    const loginOtpLink = `${appUrl}/verifyotp?email=${encodeURIComponent(email)}&reason=invite`;
+
+    // generate otp & update tables
+    const otp = await generateOtpAndUpdateUser(email,ctx.roleLabel as Role,createdById)
+    // construct email
+    const { subject, html } = getInviteEmailTemplate({...ctx,loginOtpLink}, otp)
+
+    // send email
+    const r = await sendMosaicMail({ to: email, subject, html });
+
+    return { email, ...r };
+  });
+
+  return {
+    requested: emails.length,
+    sent: results.filter((r) => r.ok).length,
+    failed: results.filter((r) => !r.ok).length,
+    results,
+  };
+}
+export async function constructAndSendMail(to: string, otp: string, ctx: OtpEmailContext) {
+  const appName = ctx.projectName ?? "PG&E Advanced Substation";
 
   // Choose subject and body content by purpose
   let subject = "";
   let html = "";
 
-  if (ctx.purpose === "VERIFY_EMAIL") {
-    subject = `Confirm your ${appName} account`;
-    html = renderBaseTemplate({
-      title: "Confirm your account",
-      subtitle: `Thank you for joining ${appName}. Use this code to complete your registration.`,
-      otp,
-      appName,
-    });
-  }
-
-  if (ctx.purpose === "LOGIN" || ctx.purpose === "INVITED_NO_PASSWORD") {
+  if (ctx.purpose === "LOGIN") {
     subject = `Your ${appName} login code`;
     html = renderBaseTemplate({
       title: "Sign in to your account",
-      subtitle: `Use this code to sign in to ${appName}.`,
       otp,
       primaryActionLabel: ctx.loginOtpLink ? "Open login page" : undefined,
       primaryActionUrl: ctx.loginOtpLink,
@@ -143,36 +163,16 @@ export async function sendOtpEmail(to: string, otp: string, ctx: SendOtpCtx) {
   }
 
   if (ctx.purpose === "INVITE") {
-    subject = `You have been invited to ${appName}`;
-    const roleLine = ctx.roleLabel ? `Role: ${ctx.roleLabel}` : undefined;
-
-    html = renderBaseTemplate({
-      title: "You have been invited",
-      subtitle: `You have been invited to access ${appName}.`,
-      otp,
-      primaryActionLabel: ctx.loginOtpLink ? "Accept invite and sign in" : undefined,
-      primaryActionUrl: ctx.loginOtpLink,
-      extraLines: [
-        roleLine ? roleLine : "",
-        "Use the OTP below to sign in.",
-      ].filter(Boolean),
-      appName,
-    });
+    const { subject: s, html: h } = getInviteEmailTemplate(ctx, otp)
+    subject = s
+    html = h
   }
-  if (appName.toLowerCase().includes("mosaic")) {
-    
-    return await sendMosaicMail({
-      to,
-      subject,
-      html
-    });
-  }
-  return await sendTIMSMail({
+  const response = await sendMosaicMail({
     to,
     subject,
     html
   });
-  
+  return response.ok;
 }
 
 type SendEmailParams = {
@@ -202,60 +202,32 @@ const sendTIMSMail = async ({ to, subject, html }: SendEmailParams): Promise<boo
   }
 };
 
-const sendMosaicMail = async ({ to, subject, html }: SendEmailParams) => {
-  const {
-    TENANT_ID,
-    CLIENT_ID,
-    CLIENT_SECRET,
-    MOSAIC_SENDER_EMAIL,
-  } = process.env;
 
-  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET || !MOSAIC_SENDER_EMAIL) {
-    throw new Error(
-      'Missing required env vars: TENANT_ID, CLIENT_ID, CLIENT_SECRET, SENDER_EMAIL'
-    );
-  }
+export async function sendMosaicMail({ to, subject, html }: SendEmailParams) {
+  const { MOSAIC_SENDER_EMAIL } = process.env;
+  if (!MOSAIC_SENDER_EMAIL) throw new Error("Missing MOSAIC_SENDER_EMAIL");
 
-  const credential = new ClientSecretCredential(
-    TENANT_ID,
-    CLIENT_ID,
-    CLIENT_SECRET
-  );
-  const authProvider = new TokenCredentialAuthenticationProvider(credential, {
-    scopes: ['https://graph.microsoft.com/.default'],
-  });
-  const options = {
-    authProvider,
-  };
-console.log("before client")
-  const client = Client.initWithMiddleware({
-    authProvider,
-  });
-try{
-  const data = await client
-    .api(`/users/${encodeURIComponent(MOSAIC_SENDER_EMAIL)}/sendMail`)
-    .post({
-      message: {
-        subject: subject,
-        body: {
-          contentType: "HTML",
-          content: html,
+  const client = getGraphClient();
+
+  try {
+    await withGraphRetry(() =>
+      client.api(`/users/${encodeURIComponent(MOSAIC_SENDER_EMAIL)}/sendMail`).post({
+        message: {
+          subject,
+          body: { contentType: "HTML", content: html },
+          toRecipients: [{ emailAddress: { address: to } }],
         },
-        toRecipients: [
-          {
-            emailAddress: {
-              address: to,
-            },
-          },
-        ],
-      },
-      saveToSentItems: true,
-    });
-    return true
+        saveToSentItems: true,
+      }),
+    );
+
+    return { ok: true as const };
+  } catch (err: any) {
+    const status = err?.statusCode || err?.status;
+    const msg =
+      err?.body?.error?.message ||
+      err?.message ||
+      "Graph sendMail failed";
+    return { ok: false as const, status, message: msg };
   }
-    catch(err: any){
-  console.error("Graph sendMail failed:", err?.body || err?.message);
-      return false
-    }
-  
-};
+}

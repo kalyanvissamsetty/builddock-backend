@@ -150,13 +150,14 @@ export async function uploadBuild(req: Request, res: Response, next: NextFunctio
         },
       });
     }
-    if (versionBeingUploaded.s3Path != "" && versionBeingUploaded.s3Path != null) {
+    try{
       await invalidateCloudFront([
         `/${project.slug}/${environment.slug}/${versionBeingUploaded.name}/*`,
       ]);
       logger.info(`CloudFront invalidated for ${s3KeyBase}`);
+    }catch(error){
+      logger.error("Error invalidating CloudFront", error);
     }
-
 
     sendSseEvent(uploadId, {
       type: "completed",
